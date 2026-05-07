@@ -1,0 +1,192 @@
+{
+  "theme": "Light Theme - High-Contrast Swiss",
+  "archetype": "Archetype 4 (Swiss & High-Contrast)",
+  "platform": "Expo React Native",
+  "colors": {
+    "primary": "#0A2463",
+    "secondary": "#FF6B35",
+    "success": "#248232",
+    "background": "#F8F9FA",
+    "surface": "#FFFFFF",
+    "text": {
+      "primary": "#1A1A1A",
+      "secondary": "#6C757D",
+      "muted": "#ADB5BD",
+      "inverse": "#FFFFFF"
+    },
+    "border": "#DEE2E6"
+  },
+  "typography": {
+    "fontFamily": "System",
+    "sizes": {
+      "h1": 32,
+      "h2": 24,
+      "h3": 20,
+      "body": 16,
+      "small": 14,
+      "tiny": 12
+    },
+    "weights": {
+      "bold": "700",
+      "semiBold": "600",
+      "regular": "400"
+    }
+  },
+  "spacing": {
+    "xs": 4,
+    "sm": 8,
+    "md": 16,
+    "lg": 24,
+    "xl": 32,
+    "xxl": 48
+  },
+  "borderRadius": {
+    "sm": 4,
+    "md": 8,
+    "lg": 12,
+    "xl": 24,
+    "pill": 9999
+  },
+  "shadows": {
+    "card": {
+      "shadowColor": "#000",
+      "shadowOffset": { "width": 0, "height": 2 },
+      "shadowOpacity": 0.05,
+      "shadowRadius": 8,
+      "elevation": 2
+    }
+  },
+  "components": {
+    "button": {
+      "primary": {
+        "backgroundColor": "#0A2463",
+        "paddingVertical": 16,
+        "paddingHorizontal": 24,
+        "borderRadius": 12,
+        "alignItems": "center",
+        "justifyContent": "center"
+      },
+      "success": {
+        "backgroundColor": "#248232",
+        "paddingVertical": 12,
+        "paddingHorizontal": 20,
+        "borderRadius": 8,
+        "flexDirection": "row",
+        "alignItems": "center",
+        "justifyContent": "center"
+      },
+      "text": {
+        "color": "#FFFFFF",
+        "fontSize": 16,
+        "fontWeight": "600"
+      }
+    },
+    "input": {
+      "container": {
+        "marginBottom": 16
+      },
+      "field": {
+        "backgroundColor": "#FFFFFF",
+        "borderWidth": 1,
+        "borderColor": "#DEE2E6",
+        "borderRadius": 8,
+        "padding": 16,
+        "fontSize": 16,
+        "color": "#1A1A1A"
+      },
+      "label": {
+        "fontSize": 14,
+        "color": "#6C757D",
+        "marginBottom": 8,
+        "fontWeight": "600"
+      }
+    },
+    "card": {
+      "backgroundColor": "#FFFFFF",
+      "borderRadius": 12,
+      "padding": 16,
+      "marginBottom": 16,
+      "borderWidth": 1,
+      "borderColor": "#F8F9FA"
+    },
+    "chip": {
+      "unselected": {
+        "backgroundColor": "#F8F9FA",
+        "borderWidth": 1,
+        "borderColor": "#DEE2E6",
+        "borderRadius": 9999,
+        "paddingVertical": 8,
+        "paddingHorizontal": 16,
+        "marginRight": 8,
+        "marginBottom": 8
+      },
+      "selected": {
+        "backgroundColor": "#0A2463",
+        "borderWidth": 1,
+        "borderColor": "#0A2463",
+        "borderRadius": 9999,
+        "paddingVertical": 8,
+        "paddingHorizontal": 16,
+        "marginRight": 8,
+        "marginBottom": 8
+      },
+      "unselectedText": {
+        "color": "#6C757D",
+        "fontSize": 14,
+        "fontWeight": "500"
+      },
+      "selectedText": {
+        "color": "#FFFFFF",
+        "fontSize": 14,
+        "fontWeight": "500"
+      }
+    }
+  },
+  "screens": {
+    "ProfileSetup": {
+      "description": "First launch onboarding screen to capture user details.",
+      "layout": "Centered form with branding.",
+      "fields": ["Name", "Phone", "Company Name"]
+    },
+    "PostLoad": {
+      "description": "Input form for drivers/operators to post load.",
+      "layout": "Scrollable form with distinct grouped sections (Route, Cargo Details, Dimensions, Date).",
+      "elements": [
+        "Origin Pincode (Input, Numeric)",
+        "Destination Pincode (Input, Numeric)",
+        "Cargo Allowed (Multi-select Chips: Bags, Carton, Pipes, Drums, Irregular)",
+        "Cargo Placement (Toggle/Segmented Control: Stackable vs Floor Only)",
+        "Weight in Tons (Input, Numeric)",
+        "Space in cu Feet (Input, Numeric)",
+        "Loading Date (Date Picker)"
+      ]
+    },
+    "LoadMarket": {
+      "description": "List of available loads.",
+      "layout": "FlatList of Cards. Top section has simple filter (Origin/Dest Pincode input).",
+      "cardData": "Poster Name, Company, Phone, Origin, Dest, Cargo Type, Weight/Space, Date.",
+      "actions": "Prominent 'Call' button (Success color) on each card."
+    }
+  },
+  "media": {
+    "images": [
+      {
+        "url": "https://images.unsplash.com/photo-1759380115149-70983437f672?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA3MDR8MHwxfHNlYXJjaHwyfHx0cnVjayUyMGxvZ2lzdGljcyUyMG1vZGVybnxlbnwwfHx8fDE3Nzc5Njc5ODB8MA&ixlib=rb-4.1.0&q=85",
+        "category": "onboarding_background",
+        "description": "Subtle logistics background for profile setup if needed."
+      }
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Build this as an Expo React Native application using .js/.jsx files.",
+    "Use standard React Native components (View, Text, TextInput, TouchableOpacity, FlatList, ScrollView) and standard Expo icons (@expo/vector-icons).",
+    "All interactive elements MUST include a testID attribute (e.g., testID='post-load-submit-button').",
+    "Use standard RN StyleSheet.create() for styling based on the provided JSON specs.",
+    "Ensure large tap targets (minimum 44x44) for accessibility, especially for the non-tech-savvy driver demographic.",
+    "Navigation should be implemented using React Navigation (Bottom Tabs).",
+    "For the Cargo Placement toggle, use a row of two Touchables that act as a segmented control, highlighting the selected one.",
+    "Use a simple state management or AsyncStorage to handle the 'Profile setup screen (first launch)' logic.",
+    "Mock the data for the Load Market screen to demonstrate functionality.",
+    "Forms must have proper keyboard types (e.g., keyboardType='numeric' for pincodes, weight, space)."
+  ]
+}
