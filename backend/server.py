@@ -1,9 +1,10 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Query, Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
+import base64
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional
@@ -147,7 +148,7 @@ async def create_load(payload: LoadCreate):
     return load
 
 
-@api_router.get("/loads", response_model=List[Load])
+@api_router.get("/loads")
 async def list_loads(
     origin: Optional[str] = Query(None),
     destination: Optional[str] = Query(None),
@@ -157,9 +158,81 @@ async def list_loads(
         query["origin_pincode"] = origin
     if destination:
         query["destination_pincode"] = destination
-    cursor = db.loads.find(query, {"_id": 0}).sort("created_at", -1).limit(500)
+    # Project images out for a fast list response; expose image_count instead
+    cursor = db.loads.find(query, {"_id": 0, "images": 0}).sort("created_at", -1).limit(500)
     docs = await cursor.to_list(500)
-    return [Load(**d) for d in docs]
+    # Fetch counts in one round-trip
+    ids = [d["id"] for d in docs]
+    counts: dict = {}
+    if ids:
+        cursor2 = db.loads.find({"id": {"$in": ids}}, {"_id": 0, "id": 1, "images": 1})
+        async for d in cursor2:
+            counts[d["id"]] = len(d.get("images") or [])
+    out = []
+    for d in docs:
+        d["image_count"] = counts.get(d["id"], 0)
+        d["images"] = []  # list view never carries image bytes
+        out.append(d)
+    return out
+
+
+@api_router.get("/loads/{load_id}/image/{idx}")
+async def get_load_image(load_id: str, idx: int):
+    doc = await db.loads.find_one({"id": load_id}, {"_id": 0, "images": 1})
+    imgs = (doc or {}).get("images") or []
+    if not doc or idx < 0 or idx >= len(imgs):
+        raise HTTPException(status_code=404, detail="Image not found")
+    data_url = imgs[idx]
+    if "," in data_url:
+        header, b64 = data_url.split(",", 1)
+        mime = "image/jpeg"
+        if header.startswith("data:") and ";" in header:
+            mime = header[5:].split(";")[0] or "image/jpeg"
+    else:
+        b64 = data_url
+        mime = "image/jpeg"
+    try:
+        img_bytes = base64.b64decode(b64)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Bad image data")
+    return Response(
+        content=img_bytes,
+        media_type=mime,
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
+class ShortenRequest(BaseModel):
+    url: str
+
+
+class ShortenResponse(BaseModel):
+    url: str
+    short: str
+
+
+@api_router.post("/shorten", response_model=ShortenResponse)
+async def shorten_url(payload: ShortenRequest):
+    """Shorten a URL via TinyURL (free, no auth). Cached in Mongo."""
+    long_url = payload.url
+    cached = await db.short_urls.find_one({"url": long_url}, {"_id": 0})
+    if cached and cached.get("short"):
+        return ShortenResponse(**cached)
+    try:
+        resp = requests.get(
+            "https://tinyurl.com/api-create.php",
+            params={"url": long_url},
+            timeout=8,
+            headers={"User-Agent": "LoadLink/1.0"},
+        )
+        text = (resp.text or "").strip()
+        if resp.status_code == 200 and text.startswith("http"):
+            await db.short_urls.insert_one({"url": long_url, "short": text})
+            return ShortenResponse(url=long_url, short=text)
+    except Exception as e:
+        logger.warning(f"Shorten failed: {e}")
+    # Fallback: return the original URL
+    return ShortenResponse(url=long_url, short=long_url)
 
 
 app.include_router(api_router)

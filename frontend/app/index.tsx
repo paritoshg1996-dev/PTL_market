@@ -66,6 +66,7 @@ type Load = {
   created_at: string;
   truck_type?: string;
   images?: string[];
+  image_count?: number;
 };
 
 // ============== Root ==============
@@ -381,6 +382,7 @@ function PostLoadScreen({ profile, onPosted }: { profile: Profile; onPosted: () 
   const [dest, setDest] = useState("");
   const [destInfo, setDestInfo] = useState<{ city: string; state: string; valid: boolean } | null>(null);
   const [images, setImages] = useState<string[]>([]);
+  const [placement, setPlacement] = useState<string>("Stackable");
   const [truckType, setTruckType] = useState<string>("");
   const [weight, setWeight] = useState("");
   const [space, setSpace] = useState("");
@@ -426,16 +428,21 @@ function PostLoadScreen({ profile, onPosted }: { profile: Profile; onPosted: () 
       Alert.alert("Permission needed", "Please grant photo library access to attach images.");
       return;
     }
+    const remaining = 3 - images.length;
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: false,
+      allowsMultipleSelection: true,
+      selectionLimit: remaining,
       quality: 0.5,
       base64: true,
     });
-    if (!res.canceled && res.assets && res.assets[0]?.base64) {
-      const a = res.assets[0];
-      const dataUrl = `data:${a.mimeType || "image/jpeg"};base64,${a.base64}`;
-      setImages((prev) => [...prev, dataUrl].slice(0, 3));
+    if (!res.canceled && res.assets && res.assets.length > 0) {
+      const newOnes = res.assets
+        .slice(0, remaining)
+        .filter((a: any) => !!a.base64)
+        .map((a: any) => `data:${a.mimeType || "image/jpeg"};base64,${a.base64}`);
+      setImages((prev) => [...prev, ...newOnes].slice(0, 3));
     }
   };
 
@@ -463,7 +470,7 @@ function PostLoadScreen({ profile, onPosted }: { profile: Profile; onPosted: () 
         destination_city: destInfo?.city || "",
         destination_state: destInfo?.state || "",
         cargo_types: [],
-        cargo_placement: "",
+        cargo_placement: placement,
         truck_type: truckType,
         weight_tons: w,
         space_cuft: sParsed,
@@ -479,11 +486,13 @@ function PostLoadScreen({ profile, onPosted }: { profile: Profile; onPosted: () 
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error("Failed to post");
+      const created = await res.json();
 
       const reset = () => {
         setOrigin("");
         setDest("");
         setTruckType("");
+        setPlacement("Stackable");
         setWeight("");
         setSpace("");
         setImages([]);
@@ -493,14 +502,40 @@ function PostLoadScreen({ profile, onPosted }: { profile: Profile; onPosted: () 
         const dateStr = date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
         const originLine = originInfo?.city ? `${origin} (${originInfo.city}, ${originInfo.state})` : origin;
         const destLine = destInfo?.city ? `${dest} (${destInfo.city}, ${destInfo.state})` : dest;
+
+        // Build image URLs and shorten them via backend (tinyurl); fall back to original on failure
+        let imageLines = "";
+        if (images.length > 0 && created?.id) {
+          const longUrls = images.map(
+            (_, i) => `${process.env.EXPO_PUBLIC_BACKEND_URL}/api/loads/${created.id}/image/${i}`
+          );
+          const shortened = await Promise.all(
+            longUrls.map(async (u) => {
+              try {
+                const r = await fetch(`${API}/shorten`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ url: u }),
+                });
+                const j = await r.json();
+                return j.short || u;
+              } catch {
+                return u;
+              }
+            })
+          );
+          imageLines = `\n📸 *Photos:*\n` + shortened.join("\n");
+        }
         const text =
           `🚛 *Truck Space Available – LoadLink*\n\n` +
           `📍 *Route:* ${originLine} ➡️ ${destLine}\n` +
           `🚚 *Truck:* ${truckType}\n` +
           `⚖️ *Weight:* ${w} Tons\n` +
           (sParsed ? `📦 *Space:* ${sParsed} cu ft\n` : "") +
-          `📅 *Loading:* ${dateStr}\n\n` +
-          `📞 *Contact:* ${profile.name}` +
+          `📅 *Loading:* ${dateStr}\n` +
+          `🧱 *Placement:* ${placement}\n` +
+          imageLines +
+          `\n\n📞 *Contact:* ${profile.name}` +
           (profile.company ? ` — ${profile.company}` : "") +
           `\n+91 ${profile.phone}`;
         const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
@@ -593,6 +628,24 @@ function PostLoadScreen({ profile, onPosted }: { profile: Profile; onPosted: () 
             );
           })}
         </View>
+
+        <SectionTitle icon="layers-outline" title="Cargo Placement" />
+        <View style={styles.segment} testID="placement-segment">
+          {PLACEMENT.map((p) => {
+            const on = placement === p;
+            return (
+              <TouchableOpacity
+                key={p}
+                testID={`placement-${p.replace(" ", "-")}`}
+                style={[styles.segmentBtn, on && styles.segmentBtnOn]}
+                onPress={() => setPlacement(p)}
+              >
+                <Text style={[styles.segmentText, on && styles.segmentTextOn]}>{p}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
 
         <SectionTitle icon="image-outline" title="Photos (optional)" />
         <Text style={styles.label}>Attach up to 3 photos of the truck or available space</Text>
@@ -1002,6 +1055,7 @@ function LoadCard({
   isMine: boolean;
   distance?: { origin: number; dest: number; offRoute: boolean };
 }) {
+  const [showImages, setShowImages] = useState(false);
   const callPoster = () => {
     Linking.openURL(`tel:${load.poster_phone}`).catch(() =>
       Alert.alert("Error", "Cannot open dialer")
@@ -1094,6 +1148,13 @@ function LoadCard({
             </Text>
           </View>
         ) : null}
+        {load.cargo_placement ? (
+          <View style={[styles.miniChip, { backgroundColor: "#FFF4EE" }]}>
+            <Text style={[styles.miniChipText, { color: COLORS.secondary }]}>
+              {load.cargo_placement}
+            </Text>
+          </View>
+        ) : null}
       </View>
 
       {load.images && load.images.length > 0 ? (
@@ -1102,6 +1163,30 @@ function LoadCard({
             <Image key={i} source={{ uri: src }} style={styles.cardPhoto} resizeMode="cover" />
           ))}
         </View>
+      ) : (load.image_count || 0) > 0 ? (
+        showImages ? (
+          <View style={styles.cardPhotosRow} testID={`card-photos-${load.id}`}>
+            {Array.from({ length: load.image_count || 0 }).slice(0, 3).map((_, i) => (
+              <Image
+                key={i}
+                source={{ uri: `${process.env.EXPO_PUBLIC_BACKEND_URL}/api/loads/${load.id}/image/${i}` }}
+                style={styles.cardPhoto}
+                resizeMode="cover"
+              />
+            ))}
+          </View>
+        ) : (
+          <TouchableOpacity
+            testID={`show-images-btn-${load.id}`}
+            onPress={() => setShowImages(true)}
+            style={styles.showImagesBtn}
+          >
+            <Ionicons name="images-outline" size={16} color={COLORS.primary} />
+            <Text style={styles.showImagesBtnText}>
+              Show {load.image_count} {load.image_count === 1 ? "photo" : "photos"}
+            </Text>
+          </TouchableOpacity>
+        )
       ) : null}
 
       <View style={styles.divider} />
@@ -1273,11 +1358,11 @@ function FindSpaceModal({
               </View>
               <View style={{ width: 12 }} />
               <View style={styles.flex1}>
-                <Field label="Volume (cu ft)">
+                <Field label="Volume (cu ft) — optional">
                   <TextInput
                     testID="fs-volume-input"
                     style={styles.input}
-                    placeholder="e.g., 120"
+                    placeholder="Optional"
                     placeholderTextColor={COLORS.textSubtle}
                     value={volumeCuft}
                     onChangeText={setVolumeCuft}
@@ -1547,6 +1632,58 @@ const styles = StyleSheet.create({
   specValue: { fontSize: 14, color: COLORS.text, fontWeight: "700" },
 
   cargoChipsRow: { flexDirection: "row", flexWrap: "wrap", marginTop: 12 },
+
+  photoRow: { flexDirection: "row", marginHorizontal: -4 },
+  photoCell: {
+    flex: 1,
+    aspectRatio: 1,
+    marginHorizontal: 4,
+    borderRadius: 12,
+    overflow: "hidden",
+    backgroundColor: COLORS.surface,
+    position: "relative",
+  },
+  photoEmpty: {
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    borderStyle: "dashed",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  photoImg: { width: "100%", height: "100%" },
+  photoRemoveBtn: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  photoAddLabel: { fontSize: 11, color: COLORS.textMuted, marginTop: 4, fontWeight: "600" },
+
+  cardPhotosRow: { flexDirection: "row", marginTop: 12, gap: 8 },
+  cardPhoto: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    backgroundColor: COLORS.bg,
+  },
+  showImagesBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    marginTop: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.bg,
+  },
+  showImagesBtnText: { color: COLORS.primary, fontWeight: "700", fontSize: 13 },
   miniChip: {
     backgroundColor: "#EEF2FA",
     paddingVertical: 4,
