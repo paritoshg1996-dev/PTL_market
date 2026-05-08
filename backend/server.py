@@ -97,6 +97,52 @@ async def lookup_pincode(pincode: str):
         return PincodeInfo(pincode=pincode, city="", state="", valid=False)
 
 
+class CitySuggestion(BaseModel):
+    name: str       # post office / area name
+    city: str       # district
+    state: str
+    pincode: str
+
+
+@api_router.get("/city/{name}", response_model=List[CitySuggestion])
+async def search_city(name: str):
+    """Search post offices / areas by name and return matching pincodes.
+    Powered by api.postalpincode.in (free, no auth)."""
+    name = (name or "").strip()
+    if len(name) < 3:
+        return []
+    try:
+        resp = requests.get(
+            f"https://api.postalpincode.in/postoffice/{name}",
+            timeout=8,
+            headers={"User-Agent": "LoadLink/1.0"},
+        )
+        data = resp.json()
+        out: List[CitySuggestion] = []
+        if isinstance(data, list) and data and data[0].get("Status") == "Success":
+            seen = set()
+            for office in (data[0].get("PostOffice") or []):
+                pin = office.get("Pincode") or ""
+                area = office.get("Name") or ""
+                key = (area, pin)
+                if not pin or key in seen:
+                    continue
+                seen.add(key)
+                out.append(CitySuggestion(
+                    name=area,
+                    city=office.get("District") or office.get("Block") or "",
+                    state=office.get("State") or "",
+                    pincode=pin,
+                ))
+                if len(out) >= 25:
+                    break
+        return out
+    except Exception as e:
+        logger.warning(f"City search failed: {e}")
+        return []
+
+
+
 class GeoInfo(BaseModel):
     pincode: str
     lat: Optional[float] = None
