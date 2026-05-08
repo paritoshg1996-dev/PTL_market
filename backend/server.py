@@ -153,6 +153,11 @@ async def list_loads(
     origin: Optional[str] = Query(None),
     destination: Optional[str] = Query(None),
 ):
+    # Auto-delete expired loads (loading_date < today). loading_date is stored as 'YYYY-MM-DD',
+    # so a string comparison is correct.
+    today_str = datetime.now(timezone.utc).date().isoformat()
+    await db.loads.delete_many({"loading_date": {"$lt": today_str}})
+
     query = {}
     if origin:
         query["origin_pincode"] = origin
