@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import {
   RefreshControl,
   Modal,
   Image,
+  Animated,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -777,6 +778,80 @@ type CitySuggestion = { name: string; city: string; state: string; pincode: stri
 
 type RouteInfo = { city: string; state: string; valid: boolean } | null;
 
+// Web Speech Recognition (works in Chrome/Edge on web preview).
+// On native platforms (Expo Go), this will be null and we show a graceful alert.
+const WebSpeechRecognition: any =
+  typeof window !== "undefined"
+    ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    : null;
+
+function VoiceListenOverlay({
+  visible,
+  onCancel,
+  status,
+}: {
+  visible: boolean;
+  onCancel: () => void;
+  status: string;
+}) {
+  const pulse = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!visible) {
+      pulse.setValue(0);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.timing(pulse, {
+        toValue: 1,
+        duration: 1400,
+        useNativeDriver: true,
+      })
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [visible, pulse]);
+
+  const ring = (delay: number) => ({
+    transform: [
+      {
+        scale: pulse.interpolate({
+          inputRange: [0, 1],
+          outputRange: [1, 2.4],
+        }),
+      },
+    ],
+    opacity: pulse.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0.5, 0],
+    }),
+  });
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+      <View style={styles.voiceBackdrop} testID="voice-overlay">
+        <View style={styles.voiceCard}>
+          <View style={styles.voicePulseWrap}>
+            <Animated.View style={[styles.voiceRing, ring(0)]} />
+            <Animated.View style={[styles.voiceRing, ring(0)]} />
+            <View style={styles.voiceMicBox}>
+              <Ionicons name="mic" size={42} color={COLORS.surface} />
+            </View>
+          </View>
+          <Text style={styles.voiceTitle}>Listening…</Text>
+          <Text style={styles.voiceSub}>{status}</Text>
+          <TouchableOpacity
+            testID="voice-cancel-btn"
+            onPress={onCancel}
+            style={styles.voiceCancelBtn}
+          >
+            <Text style={styles.voiceCancelText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 function SmartRouteInput({
   label,
   testIDPrefix,
@@ -796,6 +871,9 @@ function SmartRouteInput({
   const isPincodeMode = text.length === 0 || /^\d/.test(text);
   const [results, setResults] = useState<CitySuggestion[] | null>(null);
   const [searching, setSearching] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState("Speak the city name or pincode");
+  const recRef = useRef<any>(null);
 
   // City suggestions (debounced)
   useEffect(() => {
@@ -872,6 +950,62 @@ function SmartRouteInput({
     setResults(null);
   };
 
+  const stopVoice = useCallback(() => {
+    try {
+      recRef.current?.stop?.();
+    } catch {}
+    recRef.current = null;
+    setListening(false);
+  }, []);
+
+  const startVoice = () => {
+    if (!WebSpeechRecognition) {
+      Alert.alert(
+        "Voice not supported",
+        "Voice input works on the web preview (Chrome/Edge) and in production builds. It's not available inside Expo Go."
+      );
+      return;
+    }
+    try {
+      const rec = new WebSpeechRecognition();
+      rec.lang = "en-IN";
+      rec.continuous = false;
+      rec.interimResults = true;
+      rec.maxAlternatives = 1;
+      setVoiceStatus("Speak the city name or pincode");
+      rec.onresult = (e: any) => {
+        const last = e.results[e.results.length - 1];
+        const transcript = (last?.[0]?.transcript || "").toString();
+        if (last?.isFinal) {
+          const cleaned = transcript.replace(/[.,!?]/g, "").replace(/\s+/g, " ").trim();
+          if (cleaned) handleChange(cleaned);
+          stopVoice();
+        } else if (transcript) {
+          setVoiceStatus(`Heard: "${transcript.trim()}"`);
+        }
+      };
+      rec.onerror = (e: any) => {
+        const msg = e?.error || "error";
+        if (msg === "not-allowed") {
+          setVoiceStatus("Microphone permission denied");
+        } else if (msg === "no-speech") {
+          setVoiceStatus("Didn't catch that. Try again.");
+        } else {
+          setVoiceStatus(`Error: ${msg}`);
+        }
+        setTimeout(stopVoice, 1200);
+      };
+      rec.onend = () => stopVoice();
+      recRef.current = rec;
+      setListening(true);
+      rec.start();
+    } catch (err) {
+      console.warn("Voice start failed:", err);
+      stopVoice();
+      Alert.alert("Voice error", "Could not start voice input.");
+    }
+  };
+
   const showSuggestions = !isPincodeMode && text.trim().length >= 3 && results && results.length > 0;
   const showNoMatch = !isPincodeMode && !searching && results && results.length === 0 && text.trim().length >= 3;
   const showShortHint = !isPincodeMode && text.trim().length > 0 && text.trim().length < 3;
@@ -879,17 +1013,28 @@ function SmartRouteInput({
   return (
     <View style={styles.fieldWrap}>
       <Text style={styles.label}>{label}</Text>
-      <TextInput
-        testID={`${testIDPrefix}-input`}
-        style={styles.input}
-        placeholder="Pincode (e.g., 400069) or city / area name"
-        placeholderTextColor={COLORS.textSubtle}
-        value={text}
-        onChangeText={handleChange}
-        autoCapitalize="words"
-        autoCorrect={false}
-        maxLength={isPincodeMode ? 6 : 60}
-      />
+      <View style={styles.inputWithIconWrap}>
+        <TextInput
+          testID={`${testIDPrefix}-input`}
+          style={[styles.input, { paddingRight: 50 }]}
+          placeholder="Pincode (e.g., 400069), city or speak it"
+          placeholderTextColor={COLORS.textSubtle}
+          value={text}
+          onChangeText={handleChange}
+          autoCapitalize="words"
+          autoCorrect={false}
+          maxLength={isPincodeMode ? 6 : 60}
+        />
+        <TouchableOpacity
+          testID={`${testIDPrefix}-mic-btn`}
+          onPress={startVoice}
+          style={styles.micBtnAbs}
+          activeOpacity={0.7}
+          accessibilityLabel="Voice input"
+        >
+          <Ionicons name="mic" size={20} color={COLORS.primary} />
+        </TouchableOpacity>
+      </View>
 
       {/* Pincode mode hint */}
       {isPincodeMode && text.length > 0 ? (
@@ -944,6 +1089,8 @@ function SmartRouteInput({
           ) : null}
         </View>
       ) : null}
+
+      <VoiceListenOverlay visible={listening} onCancel={stopVoice} status={voiceStatus} />
     </View>
   );
 }
@@ -1669,6 +1816,84 @@ const styles = StyleSheet.create({
   },
   hintMuted: { fontSize: 12, color: COLORS.textMuted, marginTop: 6 },
   hintOk: { fontSize: 12, color: COLORS.success, marginTop: 6, fontWeight: "600" },
+
+  inputWithIconWrap: { position: "relative", justifyContent: "center" },
+  micBtnAbs: {
+    position: "absolute",
+    right: 6,
+    top: 6,
+    bottom: 6,
+    width: 38,
+    borderRadius: 100,
+    backgroundColor: "#EEF2FA",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  voiceBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(10,36,99,0.55)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 32,
+  },
+  voiceCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 24,
+    paddingVertical: 36,
+    paddingHorizontal: 28,
+    alignItems: "center",
+    width: "100%",
+    maxWidth: 340,
+  },
+  voicePulseWrap: {
+    width: 140,
+    height: 140,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 20,
+  },
+  voiceRing: {
+    position: "absolute",
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: COLORS.primary,
+  },
+  voiceMicBox: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: COLORS.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: COLORS.primary,
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
+  },
+  voiceTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: COLORS.text,
+    marginBottom: 6,
+  },
+  voiceSub: {
+    fontSize: 13,
+    color: COLORS.textMuted,
+    textAlign: "center",
+    marginBottom: 24,
+    lineHeight: 18,
+  },
+  voiceCancelBtn: {
+    paddingVertical: 12,
+    paddingHorizontal: 32,
+    borderRadius: 100,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+  },
+  voiceCancelText: { color: COLORS.text, fontWeight: "700", fontSize: 14 },
 
   pcLabelRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
   pcToggleBtn: {
