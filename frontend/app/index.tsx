@@ -377,9 +377,13 @@ function ProfileScreen({
 
 // ============== Post Load ==============
 function PostLoadScreen({ profile, onPosted }: { profile: Profile; onPosted: () => void }) {
-  const [origin, setOrigin] = useState("");
+  // Origin/Dest: text = what the user sees in the input (digits or city name).
+  // pin = the resolved 6-digit pincode used for submission/validation.
+  const [originText, setOriginText] = useState("");
+  const [originPin, setOriginPin] = useState("");
   const [originInfo, setOriginInfo] = useState<{ city: string; state: string; valid: boolean } | null>(null);
-  const [dest, setDest] = useState("");
+  const [destText, setDestText] = useState("");
+  const [destPin, setDestPin] = useState("");
   const [destInfo, setDestInfo] = useState<{ city: string; state: string; valid: boolean } | null>(null);
   const [images, setImages] = useState<string[]>([]);
   const [placement, setPlacement] = useState<string>("Stackable");
@@ -389,30 +393,6 @@ function PostLoadScreen({ profile, onPosted }: { profile: Profile; onPosted: () 
   const [date, setDate] = useState<Date>(new Date());
   const [showDate, setShowDate] = useState(false);
   const [loadingPost, setLoadingPost] = useState(false);
-
-  const lookupPincode = useCallback(
-    async (pin: string, setter: (v: any) => void) => {
-      if (!/^\d{6}$/.test(pin)) {
-        setter(null);
-        return;
-      }
-      try {
-        const r = await fetch(`${API}/pincode/${pin}`);
-        const j = await r.json();
-        setter({ city: j.city || "", state: j.state || "", valid: j.valid });
-      } catch {
-        setter(null);
-      }
-    },
-    []
-  );
-
-  useEffect(() => {
-    lookupPincode(origin, setOriginInfo);
-  }, [origin, lookupPincode]);
-  useEffect(() => {
-    lookupPincode(dest, setDestInfo);
-  }, [dest, lookupPincode]);
 
   const toggleCargo = (c: string) => {
     // legacy unused
@@ -451,8 +431,10 @@ function PostLoadScreen({ profile, onPosted }: { profile: Profile; onPosted: () 
   };
 
   const submit = async (alsoShare: boolean) => {
-    if (!/^\d{6}$/.test(origin)) return Alert.alert("Invalid", "Enter valid 6-digit origin pincode");
-    if (!/^\d{6}$/.test(dest)) return Alert.alert("Invalid", "Enter valid 6-digit destination pincode");
+    if (!/^\d{6}$/.test(originPin))
+      return Alert.alert("Invalid Origin", "Enter a valid 6-digit pincode or pick a city from the list.");
+    if (!/^\d{6}$/.test(destPin))
+      return Alert.alert("Invalid Destination", "Enter a valid 6-digit pincode or pick a city from the list.");
     if (!truckType) return Alert.alert("Required", "Select a truck type");
     const w = parseFloat(weight);
     if (!w || w <= 0) return Alert.alert("Invalid", "Enter valid weight in tons");
@@ -463,10 +445,10 @@ function PostLoadScreen({ profile, onPosted }: { profile: Profile; onPosted: () 
     setLoadingPost(true);
     try {
       const payload = {
-        origin_pincode: origin,
+        origin_pincode: originPin,
         origin_city: originInfo?.city || "",
         origin_state: originInfo?.state || "",
-        destination_pincode: dest,
+        destination_pincode: destPin,
         destination_city: destInfo?.city || "",
         destination_state: destInfo?.state || "",
         cargo_types: [],
@@ -489,8 +471,12 @@ function PostLoadScreen({ profile, onPosted }: { profile: Profile; onPosted: () 
       const created = await res.json();
 
       const reset = () => {
-        setOrigin("");
-        setDest("");
+        setOriginText("");
+        setOriginPin("");
+        setOriginInfo(null);
+        setDestText("");
+        setDestPin("");
+        setDestInfo(null);
         setTruckType("");
         setPlacement("Stackable");
         setWeight("");
@@ -500,8 +486,8 @@ function PostLoadScreen({ profile, onPosted }: { profile: Profile; onPosted: () 
 
       if (alsoShare) {
         const dateStr = date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-        const originLine = originInfo?.city ? `${origin} (${originInfo.city}, ${originInfo.state})` : origin;
-        const destLine = destInfo?.city ? `${dest} (${destInfo.city}, ${destInfo.state})` : dest;
+        const originLine = originInfo?.city ? `${originPin} (${originInfo.city}, ${originInfo.state})` : originPin;
+        const destLine = destInfo?.city ? `${destPin} (${destInfo.city}, ${destInfo.state})` : destPin;
 
         // Build image URLs and shorten them via backend (tinyurl); fall back to original on failure
         let imageLines = "";
@@ -576,28 +562,30 @@ function PostLoadScreen({ profile, onPosted }: { profile: Profile; onPosted: () 
         testID="post-load-form"
       >
         <SectionTitle icon="navigate-outline" title="Route" />
-        <PincodeOrCityField
+        <SmartRouteInput
           label="Origin"
           testIDPrefix="origin"
-          pincode={origin}
+          text={originText}
+          pin={originPin}
           info={originInfo}
-          onPickPincode={(pin, city, state) => {
-            setOrigin(pin);
-            if (city || state) setOriginInfo({ city, state, valid: true });
+          onChange={(t, pin, info) => {
+            setOriginText(t);
+            setOriginPin(pin);
+            setOriginInfo(info);
           }}
-          onChangePincode={(t) => setOrigin(t.replace(/\D/g, "").slice(0, 6))}
         />
 
-        <PincodeOrCityField
+        <SmartRouteInput
           label="Destination"
           testIDPrefix="dest"
-          pincode={dest}
+          text={destText}
+          pin={destPin}
           info={destInfo}
-          onPickPincode={(pin, city, state) => {
-            setDest(pin);
-            if (city || state) setDestInfo({ city, state, valid: true });
+          onChange={(t, pin, info) => {
+            setDestText(t);
+            setDestPin(pin);
+            setDestInfo(info);
           }}
-          onChangePincode={(t) => setDest(t.replace(/\D/g, "").slice(0, 6))}
         />
 
         <SectionTitle icon="bus-outline" title="Truck Type" />
@@ -787,29 +775,35 @@ function PincodeHint({ info, pin, testID }: any) {
 
 type CitySuggestion = { name: string; city: string; state: string; pincode: string };
 
-function PincodeOrCityField({
+type RouteInfo = { city: string; state: string; valid: boolean } | null;
+
+function SmartRouteInput({
   label,
   testIDPrefix,
-  pincode,
+  text,
+  pin,
   info,
-  onChangePincode,
-  onPickPincode,
+  onChange,
 }: {
   label: string;
   testIDPrefix: string;
-  pincode: string;
-  info: { city: string; state: string; valid: boolean } | null;
-  onChangePincode: (t: string) => void;
-  onPickPincode: (pin: string, city: string, state: string) => void;
+  text: string;
+  pin: string;
+  info: RouteInfo;
+  onChange: (text: string, pin: string, info: RouteInfo) => void;
 }) {
-  const [mode, setMode] = useState<"pincode" | "city">("pincode");
-  const [query, setQuery] = useState("");
+  // Mode is implicit: digit-first input → pincode, letter-first → city search.
+  const isPincodeMode = text.length === 0 || /^\d/.test(text);
   const [results, setResults] = useState<CitySuggestion[] | null>(null);
   const [searching, setSearching] = useState(false);
 
+  // City suggestions (debounced)
   useEffect(() => {
-    if (mode !== "city") return;
-    const q = query.trim();
+    if (isPincodeMode) {
+      setResults(null);
+      return;
+    }
+    const q = text.trim();
     if (q.length < 3) {
       setResults(null);
       return;
@@ -831,105 +825,125 @@ function PincodeOrCityField({
       cancelled = true;
       clearTimeout(t);
     };
-  }, [query, mode]);
+  }, [text, isPincodeMode]);
+
+  // Pincode lookup when 6 digits typed
+  useEffect(() => {
+    if (!isPincodeMode) return;
+    if (text.length === 6) {
+      let cancelled = false;
+      (async () => {
+        try {
+          const r = await fetch(`${API}/pincode/${text}`);
+          const j = await r.json();
+          if (!cancelled)
+            onChange(text, text, { city: j.city || "", state: j.state || "", valid: !!j.valid });
+        } catch {
+          if (!cancelled) onChange(text, text, { city: "", state: "", valid: false });
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
+    // text length < 6 → no resolved info yet
+    // (parent already cleared pin/info via handleChange below)
+  }, [text, isPincodeMode]);
+
+  const handleChange = (t: string) => {
+    if (t.length === 0) {
+      onChange("", "", null);
+      setResults(null);
+      return;
+    }
+    if (/^\d/.test(t)) {
+      // pincode mode → digits only, max 6
+      const cleaned = t.replace(/\D/g, "").slice(0, 6);
+      // clear previously resolved info while typing (will be re-set by 6-digit effect)
+      onChange(cleaned, cleaned.length === 6 ? cleaned : "", null);
+    } else {
+      // city mode → free text; clear pin until user picks a suggestion
+      onChange(t, "", null);
+    }
+  };
 
   const pick = (s: CitySuggestion) => {
-    onPickPincode(s.pincode, s.city, s.state);
-    setMode("pincode");
-    setQuery("");
+    onChange(s.name, s.pincode, { city: s.city, state: s.state, valid: true });
     setResults(null);
   };
 
+  const showSuggestions = !isPincodeMode && text.trim().length >= 3 && results && results.length > 0;
+  const showNoMatch = !isPincodeMode && !searching && results && results.length === 0 && text.trim().length >= 3;
+  const showShortHint = !isPincodeMode && text.trim().length > 0 && text.trim().length < 3;
+
   return (
     <View style={styles.fieldWrap}>
-      <View style={styles.pcLabelRow}>
-        <Text style={styles.label}>
-          {label} {mode === "city" ? "City / Area" : "Pincode"}
-        </Text>
-        <TouchableOpacity
-          testID={`${testIDPrefix}-mode-toggle`}
-          onPress={() => {
-            setMode((m) => (m === "pincode" ? "city" : "pincode"));
-            setResults(null);
-            setQuery("");
-          }}
-          style={styles.pcToggleBtn}
-        >
-          <Ionicons
-            name={mode === "pincode" ? "search" : "keypad-outline"}
-            size={12}
-            color={COLORS.primary}
-          />
-          <Text style={styles.pcToggleText}>
-            {mode === "pincode" ? "Search by city" : "Enter pincode"}
-          </Text>
-        </TouchableOpacity>
-      </View>
+      <Text style={styles.label}>{label}</Text>
+      <TextInput
+        testID={`${testIDPrefix}-input`}
+        style={styles.input}
+        placeholder="Pincode (e.g., 400069) or city / area name"
+        placeholderTextColor={COLORS.textSubtle}
+        value={text}
+        onChangeText={handleChange}
+        autoCapitalize="words"
+        autoCorrect={false}
+        maxLength={isPincodeMode ? 6 : 60}
+      />
 
-      {mode === "pincode" ? (
-        <>
-          <TextInput
-            testID={`${testIDPrefix}-pincode-input`}
-            style={styles.input}
-            placeholder="6-digit pincode"
-            placeholderTextColor={COLORS.textSubtle}
-            value={pincode}
-            onChangeText={onChangePincode}
-            keyboardType="number-pad"
-            maxLength={6}
-          />
-          <PincodeHint info={info} pin={pincode} testID={`${testIDPrefix}-pincode-hint`} />
-        </>
-      ) : (
-        <>
-          <TextInput
-            testID={`${testIDPrefix}-city-input`}
-            style={styles.input}
-            placeholder="Type city or area (min 3 letters)"
-            placeholderTextColor={COLORS.textSubtle}
-            value={query}
-            onChangeText={setQuery}
-            autoCapitalize="words"
-          />
-          {query.trim().length > 0 && query.trim().length < 3 ? (
-            <Text style={styles.hintMuted}>Type at least 3 letters…</Text>
-          ) : null}
-          {searching ? <Text style={styles.hintMuted}>Searching…</Text> : null}
-          {results && results.length === 0 && !searching ? (
-            <Text style={[styles.hintMuted, { color: COLORS.danger }]}>
-              No matches. Try a different spelling.
+      {/* Pincode mode hint */}
+      {isPincodeMode && text.length > 0 ? (
+        <PincodeHint info={info} pin={text} testID={`${testIDPrefix}-pincode-hint`} />
+      ) : null}
+
+      {/* Resolved-from-city hint */}
+      {!isPincodeMode && pin && info?.valid ? (
+        <Text style={styles.hintOk} testID={`${testIDPrefix}-resolved-hint`}>
+          <Ionicons name="checkmark-circle" size={12} color={COLORS.success} />{" "}
+          {info.city}, {info.state} · {pin}
+        </Text>
+      ) : null}
+
+      {showShortHint ? (
+        <Text style={styles.hintMuted}>Type at least 3 letters to search…</Text>
+      ) : null}
+      {!isPincodeMode && searching ? (
+        <Text style={styles.hintMuted}>Searching…</Text>
+      ) : null}
+      {showNoMatch ? (
+        <Text style={[styles.hintMuted, { color: COLORS.danger }]}>
+          No matches. Try a different spelling.
+        </Text>
+      ) : null}
+
+      {showSuggestions ? (
+        <View style={styles.suggestList} testID={`${testIDPrefix}-suggest-list`}>
+          {results!.slice(0, 8).map((s, i, arr) => (
+            <TouchableOpacity
+              key={`${s.pincode}-${s.name}-${i}`}
+              testID={`${testIDPrefix}-suggest-${i}`}
+              style={[styles.suggestRow, i === arr.length - 1 && { borderBottomWidth: 0 }]}
+              onPress={() => pick(s)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.flex1}>
+                <Text style={styles.suggestName} numberOfLines={1}>
+                  {s.name}
+                </Text>
+                <Text style={styles.suggestSub} numberOfLines={1}>
+                  {s.city}{s.state ? `, ${s.state}` : ""}
+                </Text>
+              </View>
+              <Text style={styles.suggestPin}>{s.pincode}</Text>
+            </TouchableOpacity>
+          ))}
+          {results!.length > 8 ? (
+            <Text style={styles.suggestMore}>
+              +{results!.length - 8} more — refine your search
             </Text>
           ) : null}
-          {results && results.length > 0 ? (
-            <View style={styles.suggestList} testID={`${testIDPrefix}-suggest-list`}>
-              {results.slice(0, 8).map((s, i, arr) => (
-                <TouchableOpacity
-                  key={`${s.pincode}-${s.name}-${i}`}
-                  testID={`${testIDPrefix}-suggest-${i}`}
-                  style={[styles.suggestRow, i === arr.length - 1 && { borderBottomWidth: 0 }]}
-                  onPress={() => pick(s)}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.flex1}>
-                    <Text style={styles.suggestName} numberOfLines={1}>
-                      {s.name}
-                    </Text>
-                    <Text style={styles.suggestSub} numberOfLines={1}>
-                      {s.city}{s.state ? `, ${s.state}` : ""}
-                    </Text>
-                  </View>
-                  <Text style={styles.suggestPin}>{s.pincode}</Text>
-                </TouchableOpacity>
-              ))}
-              {results.length > 8 ? (
-                <Text style={styles.suggestMore}>
-                  +{results.length - 8} more — refine your search
-                </Text>
-              ) : null}
-            </View>
-          ) : null}
-        </>
-      )}
+        </View>
+      ) : null}
     </View>
   );
 }
