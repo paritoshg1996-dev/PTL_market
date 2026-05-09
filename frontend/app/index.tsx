@@ -22,6 +22,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from "expo-speech-recognition";
 
 const API = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api`;
 
@@ -778,13 +779,6 @@ type CitySuggestion = { name: string; city: string; state: string; pincode: stri
 
 type RouteInfo = { city: string; state: string; valid: boolean } | null;
 
-// Web Speech Recognition (works in Chrome/Edge on web preview).
-// On native platforms (Expo Go), this will be null and we show a graceful alert.
-const WebSpeechRecognition: any =
-  typeof window !== "undefined"
-    ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-    : null;
-
 function VoiceListenOverlay({
   visible,
   onCancel,
@@ -873,7 +867,6 @@ function SmartRouteInput({
   const [searching, setSearching] = useState(false);
   const [listening, setListening] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState("Speak the city name or pincode");
-  const recRef = useRef<any>(null);
 
   // City suggestions (debounced)
   useEffect(() => {
@@ -952,57 +945,74 @@ function SmartRouteInput({
 
   const stopVoice = useCallback(() => {
     try {
-      recRef.current?.stop?.();
+      ExpoSpeechRecognitionModule.stop();
     } catch {}
-    recRef.current = null;
     setListening(false);
   }, []);
 
-  const startVoice = () => {
-    if (!WebSpeechRecognition) {
-      Alert.alert(
-        "Voice not supported",
-        "Voice input works on the web preview (Chrome/Edge) and in production builds. It's not available inside Expo Go."
-      );
-      return;
+  // Speech recognition events. Both inputs register handlers; only the one
+  // with `listening = true` will react.
+  useSpeechRecognitionEvent("result", (event: any) => {
+    if (!listening) return;
+    const transcript: string = event?.results?.[0]?.transcript || "";
+    if (event?.isFinal) {
+      const cleaned = transcript.replace(/[.,!?]/g, "").replace(/\s+/g, " ").trim();
+      if (cleaned) handleChange(cleaned);
+      stopVoice();
+    } else if (transcript) {
+      setVoiceStatus(`Heard: "${transcript.trim()}"`);
     }
+  });
+
+  useSpeechRecognitionEvent("error", (event: any) => {
+    if (!listening) return;
+    const msg = event?.error || "error";
+    if (msg === "not-allowed" || msg === "service-not-allowed" || msg === "permissions") {
+      setVoiceStatus("Microphone permission denied");
+    } else if (msg === "no-speech") {
+      setVoiceStatus("Didn't catch that. Try again.");
+    } else {
+      setVoiceStatus(`Error: ${msg}`);
+    }
+    setTimeout(stopVoice, 1200);
+  });
+
+  useSpeechRecognitionEvent("end", () => {
+    if (!listening) return;
+    setListening(false);
+  });
+
+  const startVoice = async () => {
     try {
-      const rec = new WebSpeechRecognition();
-      rec.lang = "en-IN";
-      rec.continuous = false;
-      rec.interimResults = true;
-      rec.maxAlternatives = 1;
+      const perm = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      if (!perm?.granted) {
+        Alert.alert(
+          "Microphone needed",
+          "Please grant microphone permission to use voice input."
+        );
+        return;
+      }
+      // If something else is recording, stop it first.
+      try {
+        ExpoSpeechRecognitionModule.stop();
+      } catch {}
+
       setVoiceStatus("Speak the city name or pincode");
-      rec.onresult = (e: any) => {
-        const last = e.results[e.results.length - 1];
-        const transcript = (last?.[0]?.transcript || "").toString();
-        if (last?.isFinal) {
-          const cleaned = transcript.replace(/[.,!?]/g, "").replace(/\s+/g, " ").trim();
-          if (cleaned) handleChange(cleaned);
-          stopVoice();
-        } else if (transcript) {
-          setVoiceStatus(`Heard: "${transcript.trim()}"`);
-        }
-      };
-      rec.onerror = (e: any) => {
-        const msg = e?.error || "error";
-        if (msg === "not-allowed") {
-          setVoiceStatus("Microphone permission denied");
-        } else if (msg === "no-speech") {
-          setVoiceStatus("Didn't catch that. Try again.");
-        } else {
-          setVoiceStatus(`Error: ${msg}`);
-        }
-        setTimeout(stopVoice, 1200);
-      };
-      rec.onend = () => stopVoice();
-      recRef.current = rec;
       setListening(true);
-      rec.start();
+      ExpoSpeechRecognitionModule.start({
+        lang: "en-IN",
+        interimResults: true,
+        continuous: false,
+        maxAlternatives: 1,
+        addsPunctuation: false,
+      });
     } catch (err) {
       console.warn("Voice start failed:", err);
-      stopVoice();
-      Alert.alert("Voice error", "Could not start voice input.");
+      setListening(false);
+      Alert.alert(
+        "Voice not available",
+        "Voice input is not available on this device."
+      );
     }
   };
 
@@ -1032,9 +1042,17 @@ function SmartRouteInput({
           activeOpacity={0.7}
           accessibilityLabel="Voice input"
         >
-          <Ionicons name="mic" size={20} color={COLORS.primary} />
+          <Ionicons name="mic" size={20} color={listening ? COLORS.secondary : COLORS.primary} />
         </TouchableOpacity>
       </View>
+
+      {/* Inline listening indicator (in addition to the full-screen overlay) */}
+      {listening ? (
+        <View style={styles.voiceInlineStatus} testID={`${testIDPrefix}-voice-inline`}>
+          <Ionicons name="radio-outline" size={12} color={COLORS.primary} />
+          <Text style={styles.voiceInlineText}>{voiceStatus}</Text>
+        </View>
+      ) : null}
 
       {/* Pincode mode hint */}
       {isPincodeMode && text.length > 0 ? (
@@ -1894,6 +1912,18 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
   },
   voiceCancelText: { color: COLORS.text, fontWeight: "700", fontSize: 14 },
+  voiceInlineStatus: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 6,
+    gap: 6,
+  },
+  voiceInlineText: {
+    fontSize: 12,
+    color: COLORS.primary,
+    fontWeight: "600",
+    fontStyle: "italic",
+  },
 
   pcLabelRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
   pcToggleBtn: {
