@@ -24,7 +24,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from "expo-speech-recognition";
 
-const API = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api`;
+const API = `https://ptl-market.onrender.com/api`;
 
 const COLORS = {
   primary: "#0A2463",
