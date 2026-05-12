@@ -195,7 +195,11 @@ async def places_search(query: str = Query(..., min_length=2)):
             "https://search.mappls.com/search/places/autosuggest/json",
             params={"query": query, "region": "IND", "access_token": MAPPLS_KEY},
             timeout=8,
-            headers={"User-Agent": "TruckTraffic/1.0 (trucktraffic.in)"},
+            headers={
+                "User-Agent": "TruckTraffic/1.0 (trucktraffic.in)",
+                "Referer": "https://ptl-market.onrender.com",
+                "Origin": "https://ptl-market.onrender.com",
+            },
         )
         return resp.json()
     except Exception as e:
@@ -212,7 +216,11 @@ async def test_mappls():
             "https://search.mappls.com/search/places/autosuggest/json",
             params={"query": "Mumbai", "region": "IND", "access_token": MAPPLS_KEY},
             timeout=8,
-            headers={"User-Agent": "TruckTraffic/1.0"},
+            headers={
+                "User-Agent": "TruckTraffic/1.0 (trucktraffic.in)",
+                "Referer": "https://ptl-market.onrender.com",
+                "Origin": "https://ptl-market.onrender.com",
+            },
         )
         return {
             "status_code": resp.status_code,
