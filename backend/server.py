@@ -203,6 +203,26 @@ async def places_search(query: str = Query(..., min_length=2)):
         raise HTTPException(status_code=502, detail="Places search unavailable")
 
 
+@api_router.get("/testmappls")
+async def test_mappls():
+    """Debug route to test Mappls API directly from server."""
+    MAPPLS_KEY = os.environ.get("MAPPLS_KEY", "NOT_SET")
+    try:
+        resp = requests.get(
+            "https://atlas.mappls.com/api/places/search/json",
+            params={"query": "Mumbai", "region": "IND", "access_token": MAPPLS_KEY},
+            timeout=8,
+            headers={"User-Agent": "TruckTraffic/1.0"},
+        )
+        return {
+            "status_code": resp.status_code,
+            "key_used": MAPPLS_KEY[:10] + "...",
+            "response": resp.json()
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
 @api_router.post("/loads", response_model=Load)
 async def create_load(payload: LoadCreate):
     load = Load(**payload.dict())
