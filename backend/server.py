@@ -192,7 +192,7 @@ async def places_search(query: str = Query(..., min_length=2)):
         raise HTTPException(status_code=500, detail="MAPPLS_KEY not configured")
     try:
         resp = requests.get(
-            "https://atlas.mappls.com/api/places/search/json",
+            "https://search.mappls.com/search/places/autosuggest/json",
             params={"query": query, "region": "IND", "access_token": MAPPLS_KEY},
             timeout=8,
             headers={"User-Agent": "TruckTraffic/1.0 (trucktraffic.in)"},
@@ -209,7 +209,7 @@ async def test_mappls():
     MAPPLS_KEY = os.environ.get("MAPPLS_KEY", "NOT_SET")
     try:
         resp = requests.get(
-            "https://atlas.mappls.com/api/places/search/json",
+            "https://search.mappls.com/search/places/autosuggest/json",
             params={"query": "Mumbai", "region": "IND", "access_token": MAPPLS_KEY},
             timeout=8,
             headers={"User-Agent": "TruckTraffic/1.0"},
