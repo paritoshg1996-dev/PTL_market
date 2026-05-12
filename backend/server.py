@@ -188,6 +188,23 @@ async def geocode_pincode(pincode: str):
         logger.warning(f"Geocode failed for {pincode}: {e}")
         return GeoInfo(pincode=pincode, found=False)
 
+@api_router.get("/places")
+async def places_search(query: str = Query(..., min_length=2)):
+    """Proxy Mappls Places Search to avoid browser CORS restrictions."""
+    MAPPLS_KEY = os.environ.get("MAPPLS_KEY", "xlpbqtrcpkscihyiexqxhnxramyzmkqkdqpd")
+    try:
+        resp = requests.get(
+            "https://atlas.mappls.com/api/places/search/json",
+            params={"query": query, "region": "IND", "access_token": MAPPLS_KEY},
+            timeout=8,
+            headers={"User-Agent": "LoadLink/1.0"},
+        )
+        return resp.json()
+    except Exception as e:
+        logger.warning(f"Places search failed: {e}")
+        raise HTTPException(status_code=502, detail="Places search unavailable")
+
+
 
 @api_router.post("/loads", response_model=Load)
 async def create_load(payload: LoadCreate):
