@@ -33,7 +33,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
 # ===== Models =====
 class LoadCreate(BaseModel):
     origin_pincode: str
@@ -42,8 +41,8 @@ class LoadCreate(BaseModel):
     destination_pincode: str
     destination_city: Optional[str] = ""
     destination_state: Optional[str] = ""
-    cargo_types: List[str] = []  # legacy / optional
-    cargo_placement: str = ""    # legacy / optional
+    cargo_types: List[str] = []
+    cargo_placement: str = ""
     truck_type: str = ""
     weight_tons: float
     space_cuft: Optional[float] = None
@@ -51,7 +50,7 @@ class LoadCreate(BaseModel):
     poster_name: str
     poster_phone: str
     poster_company: Optional[str] = ""
-    images: List[str] = []  # base64-encoded data URLs (up to 3)
+    images: List[str] = []
 
 
 class Load(LoadCreate):
@@ -101,16 +100,15 @@ async def lookup_pincode(pincode: str):
 
 
 class CitySuggestion(BaseModel):
-    name: str       # post office / area name
-    city: str       # district
+    name: str
+    city: str
     state: str
     pincode: str
 
 
 @api_router.get("/city/{name}", response_model=List[CitySuggestion])
 async def search_city(name: str):
-    """Search post offices / areas by name and return matching pincodes.
-    Powered by api.postalpincode.in (free, no auth)."""
+    """Search post offices / areas by name and return matching pincodes."""
     name = (name or "").strip()
     if len(name) < 3:
         return []
@@ -145,7 +143,6 @@ async def search_city(name: str):
         return []
 
 
-
 class GeoInfo(BaseModel):
     pincode: str
     lat: Optional[float] = None
@@ -155,7 +152,7 @@ class GeoInfo(BaseModel):
 
 @api_router.get("/geocode/{pincode}", response_model=GeoInfo)
 async def geocode_pincode(pincode: str):
-    """Resolve an Indian pincode to lat/lon. Cached in Mongo to respect Nominatim rate limits."""
+    """Resolve an Indian pincode to lat/lon. Cached in Mongo."""
     if not (pincode.isdigit() and len(pincode) == 6):
         raise HTTPException(status_code=400, detail="Pincode must be 6 digits")
 
@@ -181,29 +178,29 @@ async def geocode_pincode(pincode: str):
             )
             await db.pincode_geo.insert_one(info.dict())
             return info
-        # Cache negative result briefly to avoid hammering on bad pincodes
-        info = GeoInfo(pincode=pincode, found=False)
-        return info
+        return GeoInfo(pincode=pincode, found=False)
     except Exception as e:
         logger.warning(f"Geocode failed for {pincode}: {e}")
         return GeoInfo(pincode=pincode, found=False)
 
+
 @api_router.get("/places")
 async def places_search(query: str = Query(..., min_length=2)):
-    """Proxy Mappls Places Search to avoid browser CORS restrictions."""
-    MAPPLS_KEY = os.environ.get("MAPPLS_KEY", "xlpbqtrcpkscihyiexqxhnxramyzmkqkdqpd")
+    """Proxy Mappls Autosuggest using static key — avoids browser CORS issues."""
+    MAPPLS_KEY = os.environ.get("MAPPLS_KEY", "")
+    if not MAPPLS_KEY:
+        raise HTTPException(status_code=500, detail="MAPPLS_KEY not configured")
     try:
         resp = requests.get(
             "https://atlas.mappls.com/api/places/search/json",
             params={"query": query, "region": "IND", "access_token": MAPPLS_KEY},
             timeout=8,
-            headers={"User-Agent": "LoadLink/1.0"},
+            headers={"User-Agent": "TruckTraffic/1.0 (trucktraffic.in)"},
         )
         return resp.json()
     except Exception as e:
         logger.warning(f"Places search failed: {e}")
         raise HTTPException(status_code=502, detail="Places search unavailable")
-
 
 
 @api_router.post("/loads", response_model=Load)
@@ -219,8 +216,6 @@ async def list_loads(
     origin: Optional[str] = Query(None),
     destination: Optional[str] = Query(None),
 ):
-    # Auto-delete expired loads (loading_date < today). loading_date is stored as 'YYYY-MM-DD',
-    # so a string comparison is correct.
     today_str = datetime.now(timezone.utc).date().isoformat()
     await db.loads.delete_many({"loading_date": {"$lt": today_str}})
 
@@ -229,10 +224,10 @@ async def list_loads(
         query["origin_pincode"] = origin
     if destination:
         query["destination_pincode"] = destination
-    # Project images out for a fast list response; expose image_count instead
+
     cursor = db.loads.find(query, {"_id": 0, "images": 0}).sort("created_at", -1).limit(500)
     docs = await cursor.to_list(500)
-    # Fetch counts in one round-trip
+
     ids = [d["id"] for d in docs]
     counts: dict = {}
     if ids:
@@ -242,7 +237,7 @@ async def list_loads(
     out = []
     for d in docs:
         d["image_count"] = counts.get(d["id"], 0)
-        d["images"] = []  # list view never carries image bytes
+        d["images"] = []
         out.append(d)
     return out
 
@@ -302,7 +297,6 @@ async def shorten_url(payload: ShortenRequest):
             return ShortenResponse(url=long_url, short=text)
     except Exception as e:
         logger.warning(f"Shorten failed: {e}")
-    # Fallback: return the original URL
     return ShortenResponse(url=long_url, short=long_url)
 
 
