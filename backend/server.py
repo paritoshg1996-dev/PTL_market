@@ -70,6 +70,12 @@ class PincodeInfo(BaseModel):
 async def root():
     return {"message": "Truck Load Marketplace API"}
 
+@api_router.get("/pythonversion")
+async def python_version():
+    import sys
+    return {"python": sys.version}
+
+
 
 @api_router.get("/pincode/{pincode}", response_model=PincodeInfo)
 async def lookup_pincode(pincode: str):
