@@ -4,6 +4,8 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
+  Keyboard,
   StyleSheet,
   ScrollView,
   FlatList,
@@ -370,7 +372,15 @@ function PostLoadScreen({ profile, onPosted }: { profile: Profile; onPosted: () 
   };
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.fill} keyboardVerticalOffset={80}>
+   <TouchableWithoutFeedback
+    onPress={Keyboard.dismiss}
+    accessible={false}
+  >
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={styles.fill}
+      keyboardVerticalOffset={80}
+    >
       <ScrollView contentContainerStyle={styles.formWrap} keyboardShouldPersistTaps="handled" testID="post-load-form">
         <SectionTitle icon="navigate-outline" title="Route" />
         <SmartRouteInput label="Origin" testIDPrefix="origin" text={originText} pin={originPin} info={originInfo} onChange={(t, pin, info) => { setOriginText(t); setOriginPin(pin); setOriginInfo(info); }} />
@@ -462,7 +472,8 @@ function PostLoadScreen({ profile, onPosted }: { profile: Profile; onPosted: () 
         <View style={{ height: 40 }} />
       </ScrollView>
     </KeyboardAvoidingView>
-  );
+	</TouchableWithoutFeedback>
+	   );
 }
 
 function PincodeHint({ info, pin, testID }: any) {
