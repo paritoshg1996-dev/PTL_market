@@ -291,7 +291,6 @@ function PostLoadScreen({ profile, onPosted }: { profile: Profile; onPosted: () 
   const [placement, setPlacement] = useState<string>("Stackable");
   const [truckType, setTruckType] = useState<string>("");
   const [weight, setWeight] = useState("");
-  const [space, setSpace] = useState("");
   const [date, setDate] = useState<Date>(new Date());
   const [showDate, setShowDate] = useState(false);
   const [loadingPost, setLoadingPost] = useState(false);
@@ -316,15 +315,13 @@ function PostLoadScreen({ profile, onPosted }: { profile: Profile; onPosted: () 
     if (!truckType) return Alert.alert("Required", "Select a truck type");
     const w = parseFloat(weight);
     if (!w || w <= 0) return Alert.alert("Invalid", "Enter valid weight in tons");
-    const sParsed = space.trim() === "" ? null : parseFloat(space);
-    if (sParsed !== null && (isNaN(sParsed) || sParsed <= 0)) return Alert.alert("Invalid", "Enter valid space in cu feet (or leave it blank)");
-
+    
     setLoadingPost(true);
     try {
       const payload = {
         origin_pincode: originPin, origin_city: originInfo?.city || "", origin_state: originInfo?.state || "",
         destination_pincode: destPin, destination_city: destInfo?.city || "", destination_state: destInfo?.state || "",
-        cargo_types: [], cargo_placement: placement, truck_type: truckType, weight_tons: w, space_cuft: sParsed,
+        cargo_types: [], cargo_placement: placement, truck_type: truckType, weight_tons: w, space_cuft: null,
         loading_date: date.toISOString().slice(0, 10), poster_name: profile.name, poster_phone: profile.phone,
         poster_company: profile.company, images,
       };
@@ -335,7 +332,7 @@ function PostLoadScreen({ profile, onPosted }: { profile: Profile; onPosted: () 
       const reset = () => {
         setOriginText(""); setOriginPin(""); setOriginInfo(null);
         setDestText(""); setDestPin(""); setDestInfo(null);
-        setTruckType(""); setPlacement("Stackable"); setWeight(""); setSpace(""); setImages([]);
+        setTruckType(""); setPlacement("Stackable"); setWeight(""); setImages([]);
       };
 
       if (alsoShare) {
@@ -354,7 +351,6 @@ function PostLoadScreen({ profile, onPosted }: { profile: Profile; onPosted: () 
           imageLines = `\n📸 *Photos:*\n` + shortened.join("\n");
         }
         const text = `🚛 *Truck Space Available – LoadLink*\n\n📍 *Route:* ${originLine} ➡️ ${destLine}\n🚚 *Truck:* ${truckType}\n⚖️ *Weight:* ${w} Tons\n` +
-          (sParsed ? `📦 *Space:* ${sParsed} cu ft\n` : "") +
           `📅 *Loading:* ${dateStr}\n🧱 *Placement:* ${placement}\n${imageLines}\n\n📞 *Contact:* ${profile.name}` +
           (profile.company ? ` — ${profile.company}` : "") + `\n+91 ${profile.phone}`;
         try { await Linking.openURL(`https://wa.me/?text=${encodeURIComponent(text)}`); } catch {
@@ -383,9 +379,45 @@ function PostLoadScreen({ profile, onPosted }: { profile: Profile; onPosted: () 
     >
       <ScrollView contentContainerStyle={styles.formWrap} keyboardShouldPersistTaps="handled" testID="post-load-form">
         <SectionTitle icon="navigate-outline" title="Route" />
-        <SmartRouteInput label="Origin" testIDPrefix="origin" text={originText} pin={originPin} info={originInfo} onChange={(t, pin, info) => { setOriginText(t); setOriginPin(pin); setOriginInfo(info); }} />
-        <SmartRouteInput label="Destination" testIDPrefix="dest" text={destText} pin={destPin} info={destInfo} onChange={(t, pin, info) => { setDestText(t); setDestPin(pin); setDestInfo(info); }} />
+        <View style={styles.routeInputsRow}>
+  <View style={styles.routeInputBox}>
+    <SmartRouteInput
+      label="Origin"
+      testIDPrefix="origin"
+      text={originText}
+      pin={originPin}
+      info={originInfo}
+      onChange={(t, pin, info) => {
+        setOriginText(t);
+        setOriginPin(pin);
+        setOriginInfo(info);
+      }}
+    />
+  </View>
 
+  <View style={styles.routeArrowMid}>
+    <Ionicons
+      name="arrow-forward"
+      size={20}
+      color={COLORS.secondary}
+    />
+  </View>
+
+  <View style={styles.routeInputBox}>
+    <SmartRouteInput
+      label="Destination"
+      testIDPrefix="dest"
+      text={destText}
+      pin={destPin}
+      info={destInfo}
+      onChange={(t, pin, info) => {
+        setDestText(t);
+        setDestPin(pin);
+        setDestInfo(info);
+      }}
+    />
+  </View>
+</View>
         <SectionTitle icon="bus-outline" title="Truck Type" />
         <View style={styles.truckRow} testID="truck-types-row">
           {TRUCK_TYPES.map((t) => {
@@ -399,6 +431,31 @@ function PostLoadScreen({ profile, onPosted }: { profile: Profile; onPosted: () 
           })}
         </View>
 
+
+<SectionTitle
+  icon="scale-outline"
+  title="Weight Capacity"
+/>
+
+<View style={styles.bigWeightWrap}>
+  <TextInput
+    testID="weight-input"
+    style={styles.bigWeightInput}
+    placeholder="Weight"
+    placeholderTextColor={COLORS.textSubtle}
+    value={weight}
+    onChangeText={setWeight}
+    keyboardType="decimal-pad"
+  />
+
+  <Text style={styles.bigWeightUnit}>
+    TONS
+  </Text>
+</View>
+
+
+
+		  
         <SectionTitle icon="layers-outline" title="Cargo Placement" />
         <View style={styles.segment} testID="placement-segment">
           {PLACEMENT.map((p) => {
@@ -435,20 +492,6 @@ function PostLoadScreen({ profile, onPosted }: { profile: Profile; onPosted: () 
           })}
         </View>
 
-        <SectionTitle icon="resize-outline" title="Capacity" />
-        <View style={styles.row}>
-          <View style={styles.flex1}>
-            <Field label="Weight (Tons)">
-              <TextInput testID="weight-input" style={styles.input} placeholder="0.0" placeholderTextColor={COLORS.textSubtle} value={weight} onChangeText={setWeight} keyboardType="decimal-pad" />
-            </Field>
-          </View>
-          <View style={{ width: 12 }} />
-          <View style={styles.flex1}>
-            <Field label="Space (cu ft) — optional">
-              <TextInput testID="space-input" style={styles.input} placeholder="Optional" placeholderTextColor={COLORS.textSubtle} value={space} onChangeText={setSpace} keyboardType="decimal-pad" />
-            </Field>
-          </View>
-        </View>
 
         <SectionTitle icon="calendar-outline" title="Loading Date" />
         <TouchableOpacity testID="loading-date-btn" style={styles.dateBtn} onPress={() => setShowDate(true)}>
@@ -1196,4 +1239,44 @@ const styles = StyleSheet.create({
   chipOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   chipText: { color: COLORS.textMuted, fontWeight: "600", fontSize: 14 },
   chipTextOn: { color: COLORS.surface },
+	routeInputsRow: {
+  flexDirection: "row",
+  alignItems: "flex-start",
+  marginBottom: 8,
+},
+
+routeInputBox: {
+  flex: 1,
+},
+
+routeArrowMid: {
+  paddingHorizontal: 8,
+  paddingTop: 42,
+},
+
+bigWeightWrap: {
+  backgroundColor: COLORS.surface,
+  borderWidth: 1,
+  borderColor: COLORS.border,
+  borderRadius: 18,
+  paddingVertical: 18,
+  alignItems: "center",
+  marginBottom: 14,
+},
+
+bigWeightInput: {
+  fontSize: 34,
+  fontWeight: "700",
+  color: COLORS.text,
+  textAlign: "center",
+  minWidth: 120,
+},
+
+bigWeightUnit: {
+  marginTop: 4,
+  fontSize: 12,
+  fontWeight: "700",
+  color: COLORS.textMuted,
+  letterSpacing: 1,
+},
 });
