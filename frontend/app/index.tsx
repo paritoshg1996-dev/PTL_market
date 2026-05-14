@@ -42,6 +42,10 @@ const COLORS = {
 };
 
 const PLACEMENT = ["Stackable", "Non Stackable"];
+const PLACEMENT_OPTIONS = [
+  { key: "Stackable",     label: "Stackable",     image: require("../assets/images/stackable.png") },
+  { key: "Non Stackable", label: "Non Stackable",  image: require("../assets/images/non_stackable.png") },
+];
 const TRUCK_TYPES: { name: string; image: any }[] = [
   { name: "Open", image: require("../assets/trucks/open.png") },
   { name: "Container", image: require("../assets/trucks/container.png") },
@@ -456,18 +460,26 @@ function PostLoadScreen({ profile, onPosted }: { profile: Profile; onPosted: () 
 
 
 		  
-        <SectionTitle icon="layers-outline" title="Cargo Placement" />
-        <View style={styles.segment} testID="placement-segment">
-          {PLACEMENT.map((p) => {
-            const on = placement === p;
-            return (
-              <TouchableOpacity key={p} testID={`placement-${p.replace(" ", "-")}`} style={[styles.segmentBtn, on && styles.segmentBtnOn]} onPress={() => setPlacement(p)}>
-                <Text style={[styles.segmentText, on && styles.segmentTextOn]}>{p}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
+     <SectionTitle icon="layers-outline" title="Cargo Placement" />
+<View style={styles.placementRow} testID="placement-segment">
+  {PLACEMENT_OPTIONS.map((p) => {
+    const on = placement === p.key;
+    return (
+      <TouchableOpacity
+        key={p.key}
+        testID={`placement-${p.key.replace(" ", "-")}`}
+        style={[styles.placementCard, on && (p.key === "Stackable" ? styles.placementCardGreen : styles.placementCardRed)]}
+        onPress={() => setPlacement(p.key)}
+        activeOpacity={0.7}
+      >
+        <Image source={p.image} style={styles.placementImg} resizeMode="contain" />
+        <Text style={[styles.placementLabel, on && (p.key === "Stackable" ? styles.placementLabelGreen : styles.placementLabelRed)]}>
+          {p.label}
+        </Text>
+      </TouchableOpacity>
+    );
+  })}
+</View>
         <SectionTitle icon="image-outline" title="Photos (optional)" />
         <Text style={styles.label}>Attach up to 3 photos of the truck or available space</Text>
         <View style={styles.photoRow} testID="photos-row">
@@ -1239,6 +1251,17 @@ const styles = StyleSheet.create({
   chipOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   chipText: { color: COLORS.textMuted, fontWeight: "600", fontSize: 14 },
   chipTextOn: { color: COLORS.surface },
+	
+placementRow: { flexDirection: "row", gap: 12, marginBottom: 14 },
+placementCard: { flex: 1, backgroundColor: COLORS.surface, borderWidth: 2, borderColor: COLORS.border, borderRadius: 16, paddingVertical: 16, alignItems: "center", justifyContent: "center" },
+placementCardGreen: { borderColor: "#1B5E20", backgroundColor: "#F1F8F1" },
+placementCardRed: { borderColor: "#C62828", backgroundColor: "#FDF1F1" },
+placementImg: { width: 80, height: 80, marginBottom: 8 },
+placementLabel: { fontSize: 13, fontWeight: "700", color: COLORS.textMuted },
+placementLabelGreen: { color: "#1B5E20" },
+placementLabelRed: { color: "#C62828" },
+
+	
 	routeInputsRow: {
   flexDirection: "row",
   alignItems: "flex-start",
