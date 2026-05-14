@@ -597,22 +597,35 @@ function SmartRouteInput({ label, testIDPrefix, text, pin, info, onChange }: {
   const [listening, setListening] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState("Speak the city name or pincode");
 
-  useEffect(() => {
-    if (isPincodeMode) { setResults(null); return; }
-    const q = text.trim();
-    if (q.length < 3) { setResults(null); return; }
-    let cancelled = false;
-    setSearching(true);
-    const t = setTimeout(async () => {
-      try {
-        const r = await fetch(`${API}/city/${encodeURIComponent(q)}`);
-        const j: CitySuggestion[] = await r.json();
-        if (!cancelled) setResults(j);
-      } catch { if (!cancelled) setResults([]); }
-      finally { if (!cancelled) setSearching(false); }
-    }, 350);
-    return () => { cancelled = true; clearTimeout(t); };
-  }, [text, isPincodeMode]);
+useEffect(() => {
+  if (isPincodeMode) { setResults(null); return; }
+  const q = text.trim();
+  if (q.length < 3) { setResults(null); return; }
+  let cancelled = false;
+  setSearching(true);
+  const t = setTimeout(async () => {
+    try {
+      const r = await fetch(`${API}/places?query=${encodeURIComponent(q)}`);
+      const data = await r.json();
+      const mapped: CitySuggestion[] = (data.suggestedLocations || [])
+        .slice(0, 8)
+        .map((s: any) => {
+          const pincodeMatch = (s.placeAddress || "").match(/\b(\d{6})\b/);
+          const pincode = pincodeMatch ? pincodeMatch[1] : "";
+          return {
+            name: s.placeName,
+            city: s.placeAddress || "",
+            state: "",
+            pincode,
+          };
+        })
+        .filter((s: CitySuggestion) => s.pincode); // only show results with a pincode
+      if (!cancelled) setResults(mapped);
+    } catch { if (!cancelled) setResults([]); }
+    finally { if (!cancelled) setSearching(false); }
+  }, 350);
+  return () => { cancelled = true; clearTimeout(t); };
+}, [text, isPincodeMode]);
 
   useEffect(() => {
     if (!isPincodeMode) return;
