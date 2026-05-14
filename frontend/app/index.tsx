@@ -293,9 +293,20 @@ function PostLoadScreen({ profile, onPosted }: { profile: Profile; onPosted: () 
   const [images, setImages] = useState<string[]>([]);
   const [placement, setPlacement] = useState<string>("Stackable");
   const [truckType, setTruckType] = useState<string>("");
-  const [weight, setWeight] = useState("");
-  const [date, setDate] = useState<Date>(new Date());
-  const [showDate, setShowDate] = useState(false);
+ 
+const [weight, setWeight] = useState(1.0);
+const [date, setDate] = useState<Date>(new Date());
+
+const changeDate = (days: number) => {
+  setDate(prev => {
+    const d = new Date(prev);
+    d.setDate(d.getDate() + days);
+    if (d < new Date(new Date().setHours(0,0,0,0))) return prev;
+    return d;
+  });
+};
+  
+	
   const [loadingPost, setLoadingPost] = useState(false);
 
   const pickImage = async () => {
@@ -316,8 +327,8 @@ function PostLoadScreen({ profile, onPosted }: { profile: Profile; onPosted: () 
     if (!/^\d{6}$/.test(originPin)) return Alert.alert("Invalid Origin", "Enter a valid 6-digit pincode or pick a city from the list.");
     if (!/^\d{6}$/.test(destPin)) return Alert.alert("Invalid Destination", "Enter a valid 6-digit pincode or pick a city from the list.");
     if (!truckType) return Alert.alert("Required", "Select a truck type");
-    const w = parseFloat(weight);
-    if (!w || w <= 0) return Alert.alert("Invalid", "Enter valid weight in tons");
+const w = weight;
+if (!w || w <= 0) return Alert.alert("Invalid", "Enter valid weight in tons");
     
     setLoadingPost(true);
     try {
@@ -383,11 +394,12 @@ return (
         testID="post-load-form"
       >
 		  
-        <SectionTitle icon="navigate-outline" title="Route" />
-        <View style={styles.routeInputsRow}>
+     <SectionTitle icon="navigate-outline" title="Route" />
+<View style={styles.routeInputsRow}>
   <View style={styles.routeInputBox}>
+    <Text style={styles.routeBoxLabel}>Origin</Text>
     <SmartRouteInput
-      label="Origin"
+      label=""
       testIDPrefix="origin"
       text={originText}
       pin={originPin}
@@ -399,18 +411,13 @@ return (
       }}
     />
   </View>
-
   <View style={styles.routeArrowMid}>
-    <Ionicons
-      name="arrow-forward"
-      size={20}
-      color={COLORS.secondary}
-    />
+    <Ionicons name="arrow-forward" size={20} color={COLORS.secondary} />
   </View>
-
   <View style={styles.routeInputBox}>
+    <Text style={styles.routeBoxLabel}>Destination</Text>
     <SmartRouteInput
-      label="Destination"
+      label=""
       testIDPrefix="dest"
       text={destText}
       pin={destPin}
@@ -436,28 +443,25 @@ return (
           })}
         </View>
 
-
-<SectionTitle
-  icon="scale-outline"
-  title="Weight Capacity"
-/>
-
-<View style={styles.bigWeightWrap}>
-  <TextInput
-    testID="weight-input"
-    style={styles.bigWeightInput}
-    placeholder="Weight"
-    placeholderTextColor={COLORS.textSubtle}
-    value={weight}
-    onChangeText={setWeight}
-    keyboardType="decimal-pad"
-  />
-
-  <Text style={styles.bigWeightUnit}>
-    TONS
-  </Text>
+<SectionTitle icon="scale-outline" title="Weight Capacity" />
+<View style={styles.stepperRow}>
+  <TouchableOpacity
+    style={styles.stepperBtn}
+    onPress={() => setWeight(w => Math.max(0.5, parseFloat((w - 0.5).toFixed(1))))}
+  >
+    <Text style={styles.stepperBtnText}>−</Text>
+  </TouchableOpacity>
+  <View style={styles.stepperCenter}>
+    <Text style={styles.stepperValue}>{weight.toFixed(1)}</Text>
+    <Text style={styles.stepperUnit}>tons</Text>
+  </View>
+  <TouchableOpacity
+    style={styles.stepperBtn}
+    onPress={() => setWeight(w => parseFloat((w + 0.5).toFixed(1)))}
+  >
+    <Text style={styles.stepperBtnText}>+</Text>
+  </TouchableOpacity>
 </View>
-
 
 
 		  
@@ -506,15 +510,21 @@ return (
         </View>
 
 
-        <SectionTitle icon="calendar-outline" title="Loading Date" />
-        <TouchableOpacity testID="loading-date-btn" style={styles.dateBtn} onPress={() => setShowDate(true)}>
-          <Ionicons name="calendar" size={20} color={COLORS.primary} />
-          <Text style={styles.dateText}>{date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</Text>
-          <Ionicons name="chevron-down" size={20} color={COLORS.textMuted} />
-        </TouchableOpacity>
-        {showDate && (
-          <DateTimePicker testID="date-picker" value={date} mode="date" display={Platform.OS === "ios" ? "spinner" : "default"} minimumDate={new Date()} onChange={(_, d) => { setShowDate(Platform.OS === "ios"); if (d) setDate(d); }} />
-        )}
+      <SectionTitle icon="calendar-outline" title="Loading Date" />
+<View style={styles.stepperRow}>
+  <TouchableOpacity style={styles.stepperBtn} onPress={() => changeDate(-1)}>
+    <Text style={styles.stepperBtnText}>−</Text>
+  </TouchableOpacity>
+  <View style={styles.stepperCenter}>
+    <Ionicons name="calendar" size={14} color={COLORS.primary} />
+    <Text style={styles.stepperDateText}>
+      {date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+    </Text>
+  </View>
+  <TouchableOpacity style={styles.stepperBtn} onPress={() => changeDate(1)}>
+    <Text style={styles.stepperBtnText}>+</Text>
+  </TouchableOpacity>
+</View>
 
         <View style={[styles.row, { marginTop: 24 }]}>
           <TouchableOpacity testID="submit-load-btn" style={[styles.primaryBtn, styles.flex1, { marginTop: 0 }]} onPress={() => submit(false)} disabled={loadingPost}>
@@ -666,7 +676,7 @@ function SmartRouteInput({ label, testIDPrefix, text, pin, info, onChange }: {
 
   return (
     <View style={styles.fieldWrap}>
-      <Text style={styles.label}>{label}</Text>
+{label ? <Text style={styles.label}>{label}</Text> : null}
       <View style={styles.inputWithIconWrap}>
         <TextInput testID={`${testIDPrefix}-input`} style={[styles.input, { paddingRight: 50 }]} placeholder="Pincode (e.g., 400069), city or speak it" placeholderTextColor={COLORS.textSubtle} value={text} onChangeText={handleChange} autoCapitalize="words" autoCorrect={false} maxLength={isPincodeMode ? 6 : 60} />
         <TouchableOpacity testID={`${testIDPrefix}-mic-btn`} onPress={startVoice} style={styles.micBtnAbs} activeOpacity={0.7}>
@@ -1166,8 +1176,8 @@ const styles = StyleSheet.create({
   segmentBtnOn: { backgroundColor: COLORS.primary },
   segmentText: { color: COLORS.textMuted, fontWeight: "600" },
   segmentTextOn: { color: COLORS.surface },
-  dateBtn: { flexDirection: "row", alignItems: "center", backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, padding: 14, gap: 12 },
-  dateText: { flex: 1, fontSize: 16, color: COLORS.text, fontWeight: "500" },
+ 
+  
   primaryBtn: { backgroundColor: COLORS.primary, paddingVertical: 16, paddingHorizontal: 24, borderRadius: 12, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 16 },
   primaryBtnText: { color: COLORS.surface, fontSize: 16, fontWeight: "700" },
   whatsappBtn: { backgroundColor: "#25D366", paddingVertical: 16, paddingHorizontal: 16, borderRadius: 12, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
@@ -1262,6 +1272,83 @@ placementLabel: { fontSize: 13, fontWeight: "700", color: COLORS.textMuted },
 placementLabelGreen: { color: "#1B5E20" },
 placementLabelRed: { color: "#C62828" },
 
+
+	routeInputsRow: {
+  flexDirection: "row",
+  alignItems: "flex-start",
+  marginBottom: 8,
+  gap: 8,
+},
+routeInputBox: {
+  flex: 1,
+  backgroundColor: COLORS.surface,
+  borderWidth: 1,
+  borderColor: COLORS.border,
+  borderRadius: 12,
+  padding: 12,
+  minHeight: 100,
+},
+routeBoxLabel: {
+  fontSize: 11,
+  fontWeight: "700",
+  color: COLORS.textMuted,
+  textTransform: "uppercase",
+  letterSpacing: 0.5,
+  marginBottom: 6,
+},
+routeArrowMid: {
+  paddingHorizontal: 4,
+  paddingTop: 46,
+},
+stepperRow: {
+  flexDirection: "row",
+  alignItems: "center",
+  backgroundColor: COLORS.surface,
+  borderWidth: 1,
+  borderColor: COLORS.border,
+  borderRadius: 12,
+  padding: 10,
+  marginBottom: 14,
+  gap: 12,
+},
+stepperBtn: {
+  width: 36,
+  height: 36,
+  borderRadius: 18,
+  borderWidth: 1,
+  borderColor: COLORS.border,
+  backgroundColor: COLORS.bg,
+  alignItems: "center",
+  justifyContent: "center",
+  flexShrink: 0,
+},
+stepperBtnText: {
+  fontSize: 22,
+  color: COLORS.text,
+  lineHeight: 26,
+},
+stepperCenter: {
+  flex: 1,
+  flexDirection: "row",
+  alignItems: "baseline",
+  justifyContent: "center",
+  gap: 6,
+},
+stepperValue: {
+  fontSize: 22,
+  fontWeight: "700",
+  color: COLORS.text,
+},
+stepperUnit: {
+  fontSize: 13,
+  color: COLORS.textMuted,
+},
+stepperDateText: {
+  fontSize: 15,
+  fontWeight: "600",
+  color: COLORS.text,
+  marginLeft: 6,
+},
 	
 	routeInputsRow: {
   flexDirection: "row",
@@ -1278,29 +1365,5 @@ routeArrowMid: {
   paddingTop: 42,
 },
 
-bigWeightWrap: {
-  backgroundColor: COLORS.surface,
-  borderWidth: 1,
-  borderColor: COLORS.border,
-  borderRadius: 18,
-  paddingVertical: 18,
-  alignItems: "center",
-  marginBottom: 14,
-},
 
-bigWeightInput: {
-  fontSize: 34,
-  fontWeight: "700",
-  color: COLORS.text,
-  textAlign: "center",
-  minWidth: 120,
-},
-
-bigWeightUnit: {
-  marginTop: 4,
-  fontSize: 12,
-  fontWeight: "700",
-  color: COLORS.textMuted,
-  letterSpacing: 1,
-},
 });
