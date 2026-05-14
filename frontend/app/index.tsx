@@ -4,8 +4,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  TouchableWithoutFeedback,
-  Keyboard,
+
   StyleSheet,
   ScrollView,
   FlatList,
@@ -371,17 +370,19 @@ function PostLoadScreen({ profile, onPosted }: { profile: Profile; onPosted: () 
     }
   };
 
-  return (
-   <TouchableWithoutFeedback
-    onPress={Keyboard.dismiss}
-    accessible={false}
-  >
+return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={styles.fill}
       keyboardVerticalOffset={80}
     >
-      <ScrollView contentContainerStyle={styles.formWrap} keyboardShouldPersistTaps="handled" testID="post-load-form">
+      <ScrollView
+        contentContainerStyle={styles.formWrap}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        testID="post-load-form"
+      >
+		  
         <SectionTitle icon="navigate-outline" title="Route" />
         <View style={styles.routeInputsRow}>
   <View style={styles.routeInputBox}>
@@ -527,7 +528,7 @@ function PostLoadScreen({ profile, onPosted }: { profile: Profile; onPosted: () 
         <View style={{ height: 40 }} />
       </ScrollView>
     </KeyboardAvoidingView>
-	</TouchableWithoutFeedback>
+
 	   );
 }
 
