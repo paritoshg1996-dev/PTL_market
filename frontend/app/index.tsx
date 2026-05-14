@@ -1299,7 +1299,7 @@ routeInputBox: {
   borderColor: COLORS.border,
   borderRadius: 12,
   padding: 12,
-  minHeight: 100,
+  minHeight: 160,
 },
 routeBoxLabel: {
   fontSize: 11,
@@ -1311,7 +1311,7 @@ routeBoxLabel: {
 },
 routeArrowMid: {
   paddingHorizontal: 4,
-  paddingTop: 46,
+  paddingTop: 80,
 },
 stepperRow: {
   flexDirection: "row",
