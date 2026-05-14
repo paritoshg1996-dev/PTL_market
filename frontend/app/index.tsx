@@ -451,10 +451,42 @@ return (
   >
     <Text style={styles.stepperBtnText}>−</Text>
   </TouchableOpacity>
-  <View style={styles.stepperCenter}>
-    <Text style={styles.stepperValue}>{weight.toFixed(1)}</Text>
-    <Text style={styles.stepperUnit}>tons</Text>
-  </View>
+  <TouchableOpacity
+  style={styles.stepperCenter}
+  activeOpacity={0.8}
+  onPress={() => {
+    Alert.prompt(
+      "Weight Capacity",
+      "Enter weight in tons",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "OK",
+          onPress: (v) => {
+            const n = parseFloat(v || "");
+
+            if (!isNaN(n) && n > 0) {
+              setWeight(n);
+            }
+          },
+        },
+      ],
+      "plain-text",
+      String(weight)
+    );
+  }}
+>
+  <Text style={styles.stepperValue}>
+    {weight.toFixed(1)}
+  </Text>
+
+  <Text style={styles.stepperUnit}>
+    tons
+  </Text>
+</TouchableOpacity>
   <TouchableOpacity
     style={styles.stepperBtn}
     onPress={() => setWeight(w => parseFloat((w + 0.5).toFixed(1)))}
@@ -1176,7 +1208,19 @@ const styles = StyleSheet.create({
   voiceCancelText: { color: COLORS.text, fontWeight: "700", fontSize: 14 },
   voiceInlineStatus: { flexDirection: "row", alignItems: "center", marginTop: 6, gap: 6 },
   voiceInlineText: { fontSize: 12, color: COLORS.primary, fontWeight: "600", fontStyle: "italic" },
-  suggestList: { marginTop: 8, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, overflow: "hidden" },
+ suggestList: {
+  position: "absolute",
+  top: 78,
+  left: -170,
+  right: -170,
+  zIndex: 999,
+  backgroundColor: COLORS.surface,
+  borderWidth: 1,
+  borderColor: COLORS.border,
+  borderRadius: 14,
+  overflow: "hidden",
+  elevation: 12,
+},
   suggestRow: { flexDirection: "row", alignItems: "center", paddingVertical: 12, paddingHorizontal: 14, borderBottomWidth: 1, borderBottomColor: COLORS.border, gap: 12 },
   suggestName: { fontSize: 14, fontWeight: "700", color: COLORS.text },
   suggestSub: { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
@@ -1277,11 +1321,34 @@ const styles = StyleSheet.create({
   chipTextOn: { color: COLORS.surface },
 	
 placementRow: { flexDirection: "row", gap: 12, marginBottom: 14 },
-placementCard: { flex: 1, backgroundColor: COLORS.surface, borderWidth: 2, borderColor: COLORS.border, borderRadius: 16, paddingVertical: 16, alignItems: "center", justifyContent: "center" },
+placementCard: {
+  flex: 1,
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "center",
+  backgroundColor: COLORS.surface,
+  borderWidth: 1.5,
+  borderColor: COLORS.border,
+  borderRadius: 16,
+  paddingVertical: 12,
+  paddingHorizontal: 10,
+  marginHorizontal: 5,
+},
+
+	
 placementCardGreen: { borderColor: "#1B5E20", backgroundColor: "#F1F8F1" },
 placementCardRed: { borderColor: "#C62828", backgroundColor: "#FDF1F1" },
-placementImg: { width: 80, height: 80, marginBottom: 8 },
-placementLabel: { fontSize: 13, fontWeight: "700", color: COLORS.textMuted },
+placementImg: {
+  width: 34,
+  height: 34,
+  marginRight: 8,
+},
+placementLabel: {
+  fontSize: 14,
+  fontWeight: "700",
+  color: COLORS.text,
+},
+	
 placementLabelGreen: { color: "#1B5E20" },
 placementLabelRed: { color: "#C62828" },
 
@@ -1300,6 +1367,7 @@ routeInputBox: {
   borderRadius: 12,
   padding: 12,
   minHeight: 160,
+  minWidth: 150,	
 },
 routeBoxLabel: {
   fontSize: 11,
