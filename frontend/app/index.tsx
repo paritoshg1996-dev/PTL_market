@@ -722,12 +722,72 @@ useEffect(() => {
   return (
     <View style={styles.fieldWrap}>
 {label ? <Text style={styles.label}>{label}</Text> : null}
-      <View style={styles.inputWithIconWrap}>
-        <TextInput testID={`${testIDPrefix}-input`} style={[styles.input, { paddingRight: 50 }]} placeholder="Pincode (e.g., 400069), city or speak it" placeholderTextColor={COLORS.textSubtle} value={text} onChangeText={handleChange} autoCapitalize="words" autoCorrect={false} maxLength={isPincodeMode ? 6 : 60} />
-        <TouchableOpacity testID={`${testIDPrefix}-mic-btn`} onPress={startVoice} style={styles.micBtnAbs} activeOpacity={0.7}>
-          <Ionicons name="mic" size={20} color={listening ? COLORS.secondary : COLORS.primary} />
-        </TouchableOpacity>
-      </View>
+      
+	<View style={styles.inputWithIconWrap}>
+
+  {pin && info?.valid ? (
+    <View style={styles.selectedRouteCard}>
+      <Text style={styles.selectedRoutePin}>
+        {pin}
+      </Text>
+
+      <Text
+        style={styles.selectedRouteCity}
+        numberOfLines={1}
+      >
+        {info.city}, {info.state}
+      </Text>
+    </View>
+  ) : (
+    <TextInput
+      testID={`${testIDPrefix}-input`}
+      style={[
+        styles.input,
+        { paddingRight: 50 }
+      ]}
+      placeholder="Pincode (e.g., 400069), city or speak it"
+      placeholderTextColor={COLORS.textSubtle}
+      value={text}
+      onChangeText={handleChange}
+      autoCapitalize="words"
+      autoCorrect={false}
+      maxLength={isPincodeMode ? 6 : 60}
+    />
+  )}
+
+  {pin && info?.valid ? (
+    <TouchableOpacity
+      style={styles.changeRouteBtn}
+      onPress={() => onChange("", "", null)}
+    >
+      <Ionicons
+        name="create-outline"
+        size={14}
+        color={COLORS.primary}
+      />
+
+      <Text style={styles.changeRouteText}>
+        Change
+      </Text>
+    </TouchableOpacity>
+  ) : null}
+
+  <TouchableOpacity
+    testID={`${testIDPrefix}-mic-btn`}
+    onPress={startVoice}
+    style={styles.micBtnAbs}
+    activeOpacity={0.7}
+  >
+    <Ionicons
+      name="mic"
+      size={20}
+      color={listening ? COLORS.secondary : COLORS.primary}
+    />
+  </TouchableOpacity>
+
+</View>
+
+		
       {listening ? <View style={styles.voiceInlineStatus} testID={`${testIDPrefix}-voice-inline`}><Ionicons name="radio-outline" size={12} color={COLORS.primary} /><Text style={styles.voiceInlineText}>{voiceStatus}</Text></View> : null}
       {isPincodeMode && text.length > 0 ? <PincodeHint info={info} pin={text} testID={`${testIDPrefix}-pincode-hint`} /> : null}
       {!isPincodeMode && pin && info?.valid ? <Text style={styles.hintOk} testID={`${testIDPrefix}-resolved-hint`}><Ionicons name="checkmark-circle" size={12} color={COLORS.success} /> {info.city}, {info.state} · {pin}</Text> : null}
@@ -1192,7 +1252,7 @@ const styles = StyleSheet.create({
   formWrap: { padding: 16, paddingBottom: 40 },
   fieldWrap: { marginBottom: 14 },
   label: { fontSize: 13, fontWeight: "600", color: COLORS.textMuted, marginBottom: 8 },
-  input: { backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, padding: 14, fontSize: 16, color: COLORS.text, minHeight: 50 },
+  input: { backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, padding: 14, fontSize: 16, color: COLORS.text, minHeight: 64, paddingVertical: 18 },
   hintMuted: { fontSize: 12, color: COLORS.textMuted, marginTop: 6 },
   hintOk: { fontSize: 12, color: COLORS.success, marginTop: 6, fontWeight: "600" },
   inputWithIconWrap: { position: "relative", justifyContent: "center" },
@@ -1444,6 +1504,44 @@ routeInputBox: {
 routeArrowMid: {
   paddingHorizontal: 8,
   paddingTop: 42,
+},
+
+	selectedRouteCard: {
+  backgroundColor: COLORS.surface,
+  borderWidth: 1,
+  borderColor: COLORS.primary,
+  borderRadius: 12,
+  paddingVertical: 14,
+  paddingHorizontal: 14,
+  minHeight: 64,
+  justifyContent: "center",
+},
+
+selectedRoutePin: {
+  fontSize: 18,
+  fontWeight: "700",
+  color: COLORS.text,
+},
+
+selectedRouteCity: {
+  marginTop: 2,
+  fontSize: 13,
+  color: COLORS.textMuted,
+},
+
+changeRouteBtn: {
+  position: "absolute",
+  right: 46,
+  top: 20,
+  flexDirection: "row",
+  alignItems: "center",
+},
+
+changeRouteText: {
+  marginLeft: 4,
+  color: COLORS.primary,
+  fontSize: 12,
+  fontWeight: "600",
 },
 
 
