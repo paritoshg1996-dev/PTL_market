@@ -41,7 +41,7 @@ const COLORS = {
   danger: "#DC3545",
 };
 
-const PLACEMENT = ["Stackable", "Floor Only"];
+const PLACEMENT = ["Stackable", "Non Stackable"];
 const TRUCK_TYPES: { name: string; image: any }[] = [
   { name: "Open", image: require("../assets/trucks/open.png") },
   { name: "Container", image: require("../assets/trucks/container.png") },
