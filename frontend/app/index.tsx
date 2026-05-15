@@ -719,99 +719,95 @@ useEffect(() => {
   const showNoMatch = !isPincodeMode && !searching && results && results.length === 0 && text.trim().length >= 3;
   const showShortHint = !isPincodeMode && text.trim().length > 0 && text.trim().length < 3;
 
-  return (
+  
+	
+	return (
     <View style={styles.fieldWrap}>
-{label ? <Text style={styles.label}>{label}</Text> : null}
-      
-	<View style={styles.inputWithIconWrap}>
+      {label ? <Text style={styles.label}>{label}</Text> : null}
 
-  {pin && info?.valid ? (
-    <View style={styles.selectedRouteCard}>
-      <Text style={styles.selectedRoutePin}>
-        {pin}
-      </Text>
+      <View style={styles.inputWithIconWrap}>
+        {pin && info?.valid ? (
+          <View style={styles.selectedRouteCard}>
+            <Text style={styles.selectedRoutePin}>{pin}</Text>
+            <Text style={styles.selectedRouteCity} numberOfLines={2}>{info.city}</Text>
+          </View>
+        ) : (
+          <TextInput
+            testID={`${testIDPrefix}-input`}
+            style={[styles.input, { paddingRight: 50 }]}
+            placeholder="Pincode (e.g., 400069), city or speak it"
+            placeholderTextColor={COLORS.textSubtle}
+            value={text}
+            onChangeText={handleChange}
+            autoCapitalize="words"
+            autoCorrect={false}
+            maxLength={isPincodeMode ? 6 : 60}
+          />
+        )}
 
-      <Text
-        style={styles.selectedRouteCity}
-        numberOfLines={1}
-      >
-        {info.city}, {info.state}
-      </Text>
-    </View>
-  ) : (
-    <TextInput
-      testID={`${testIDPrefix}-input`}
-      style={[
-        styles.input,
-        { paddingRight: 50 }
-      ]}
-      placeholder="Pincode (e.g., 400069), city or speak it"
-      placeholderTextColor={COLORS.textSubtle}
-      value={text}
-      onChangeText={handleChange}
-      autoCapitalize="words"
-      autoCorrect={false}
-      maxLength={isPincodeMode ? 6 : 60}
-    />
-  )}
+        {pin && info?.valid ? (
+          <TouchableOpacity style={styles.changeRouteBtn} onPress={() => onChange("", "", null)}>
+            <Ionicons name="create-outline" size={14} color={COLORS.primary} />
+            <Text style={styles.changeRouteText}>Change</Text>
+          </TouchableOpacity>
+        ) : null}
 
-  {pin && info?.valid ? (
-    <TouchableOpacity
-      style={styles.changeRouteBtn}
-      onPress={() => onChange("", "", null)}
-    >
-      <Ionicons
-        name="create-outline"
-        size={14}
-        color={COLORS.primary}
-      />
+        <TouchableOpacity testID={`${testIDPrefix}-mic-btn`} onPress={startVoice} style={styles.micBtnAbs} activeOpacity={0.7}>
+          <Ionicons name="mic" size={20} color={listening ? COLORS.secondary : COLORS.primary} />
+        </TouchableOpacity>
+      </View>
 
-      <Text style={styles.changeRouteText}>
-        Change
-      </Text>
-    </TouchableOpacity>
-  ) : null}
-
-  <TouchableOpacity
-    testID={`${testIDPrefix}-mic-btn`}
-    onPress={startVoice}
-    style={styles.micBtnAbs}
-    activeOpacity={0.7}
-  >
-    <Ionicons
-      name="mic"
-      size={20}
-      color={listening ? COLORS.secondary : COLORS.primary}
-    />
-  </TouchableOpacity>
-
-</View>
-
-		
-      {listening ? <View style={styles.voiceInlineStatus} testID={`${testIDPrefix}-voice-inline`}><Ionicons name="radio-outline" size={12} color={COLORS.primary} /><Text style={styles.voiceInlineText}>{voiceStatus}</Text></View> : null}
+      {listening ? (
+        <View style={styles.voiceInlineStatus} testID={`${testIDPrefix}-voice-inline`}>
+          <Ionicons name="radio-outline" size={12} color={COLORS.primary} />
+          <Text style={styles.voiceInlineText}>{voiceStatus}</Text>
+        </View>
+      ) : null}
       {isPincodeMode && text.length > 0 ? <PincodeHint info={info} pin={text} testID={`${testIDPrefix}-pincode-hint`} /> : null}
-      {!isPincodeMode && pin && info?.valid ? <Text style={styles.hintOk} testID={`${testIDPrefix}-resolved-hint`}><Ionicons name="checkmark-circle" size={12} color={COLORS.success} /> {info.city}, {info.state} · {pin}</Text> : null}
       {showShortHint ? <Text style={styles.hintMuted}>Type at least 3 letters to search…</Text> : null}
       {!isPincodeMode && searching ? <Text style={styles.hintMuted}>Searching…</Text> : null}
       {showNoMatch ? <Text style={[styles.hintMuted, { color: COLORS.danger }]}>No matches. Try a different spelling.</Text> : null}
-      {showSuggestions ? (
-        <View style={styles.suggestList} testID={`${testIDPrefix}-suggest-list`}>
-          {results!.slice(0, 8).map((s, i, arr) => (
-            <TouchableOpacity key={`${s.pincode}-${s.name}-${i}`} testID={`${testIDPrefix}-suggest-${i}`} style={[styles.suggestRow, i === arr.length - 1 && { borderBottomWidth: 0 }]} onPress={() => pick(s)} activeOpacity={0.7}>
-              <View style={styles.flex1}>
-                <Text style={styles.suggestName} numberOfLines={1}>{s.name}</Text>
-                <Text style={styles.suggestSub} numberOfLines={1}>{s.city}{s.state ? `, ${s.state}` : ""}</Text>
-              </View>
-              <Text style={styles.suggestPin}>{s.pincode}</Text>
-            </TouchableOpacity>
-          ))}
-          {results!.length > 8 ? <Text style={styles.suggestMore}>+{results!.length - 8} more — refine your search</Text> : null}
-        </View>
-      ) : null}
+
+      {/* Dropdown as full-screen Modal so it never gets clipped */}
+      <Modal
+        visible={showSuggestions === true}
+        transparent
+        animationType="none"
+        onRequestClose={() => setResults(null)}
+      >
+        {/* Tap outside to close */}
+        <TouchableOpacity
+          style={{ flex: 1 }}
+          activeOpacity={1}
+          onPress={() => setResults(null)}
+        >
+          <View style={styles.suggestModalSheet}>
+            <View style={styles.suggestModalHandle} />
+            <Text style={styles.suggestModalTitle}>Select Location</Text>
+            <ScrollView keyboardShouldPersistTaps="handled">
+              {results && results.slice(0, 8).map((s, i, arr) => (
+                <TouchableOpacity
+                  key={`${s.pincode}-${s.name}-${i}`}
+                  testID={`${testIDPrefix}-suggest-${i}`}
+                  style={[styles.suggestRow, i === arr.length - 1 && { borderBottomWidth: 0 }]}
+                  onPress={() => pick(s)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.flex1}>
+                    <Text style={styles.suggestName} numberOfLines={1}>{s.name}</Text>
+                    <Text style={styles.suggestSub} numberOfLines={2}>{s.city}</Text>
+                  </View>
+                  <Text style={styles.suggestPin}>{s.pincode}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
       <VoiceListenOverlay visible={listening} onCancel={stopVoice} status={voiceStatus} />
     </View>
   );
-}
 
 // ============== SmartLocationInput (FindSpaceModal - uses Mappls /places endpoint) ==============
 function SmartLocationInput({ label, testIDPrefix, value, onResolve, error, onError }: {
@@ -1383,15 +1379,15 @@ const styles = StyleSheet.create({
 placementRow: { flexDirection: "row", gap: 12, marginBottom: 14 },
 placementCard: {
   flex: 1,
-  flexDirection: "row",
+  flexDirection: "column",
   alignItems: "center",
   justifyContent: "center",
   backgroundColor: COLORS.surface,
   borderWidth: 1.5,
   borderColor: COLORS.border,
   borderRadius: 16,
-  paddingVertical: 12,
-  paddingHorizontal: 10,
+  paddingVertical: 16,
+  paddingHorizontal: 8,
   marginHorizontal: 5,
 },
 
@@ -1399,9 +1395,9 @@ placementCard: {
 placementCardGreen: { borderColor: "#1B5E20", backgroundColor: "#F1F8F1" },
 placementCardRed: { borderColor: "#C62828", backgroundColor: "#FDF1F1" },
 placementImg: {
-  width: 34,
-  height: 34,
-  marginRight: 8,
+  width: 72,
+  height: 72,
+  marginBottom: 10,
 },
 placementLabel: {
   fontSize: 14,
@@ -1504,29 +1500,28 @@ routeArrowMid: {
   paddingTop: 42,
 },
 
-	selectedRouteCard: {
+selectedRouteCard: {
   backgroundColor: COLORS.surface,
   borderWidth: 1,
   borderColor: COLORS.primary,
   borderRadius: 12,
-  paddingVertical: 14,
+  paddingVertical: 10,
   paddingHorizontal: 14,
-  minHeight: 64,
+  paddingRight: 80,
+  minHeight: 80,
   justifyContent: "center",
 },
-
 selectedRoutePin: {
-  fontSize: 18,
+  fontSize: 16,
   fontWeight: "700",
   color: COLORS.text,
 },
-
 selectedRouteCity: {
-  marginTop: 2,
-  fontSize: 13,
+  marginTop: 4,
+  fontSize: 12,
   color: COLORS.textMuted,
+  lineHeight: 16,
 },
-
 changeRouteBtn: {
   position: "absolute",
   right: 46,
@@ -1542,5 +1537,38 @@ changeRouteText: {
   fontWeight: "600",
 },
 
+  suggestModalSheet: {
+  position: "absolute",
+  bottom: 0,
+  left: 0,
+  right: 0,
+  backgroundColor: COLORS.surface,
+  borderTopLeftRadius: 20,
+  borderTopRightRadius: 20,
+  paddingHorizontal: 16,
+  paddingBottom: 40,
+  maxHeight: "70%",
+  shadowColor: "#000",
+  shadowOpacity: 0.15,
+  shadowRadius: 12,
+  shadowOffset: { width: 0, height: -4 },
+  elevation: 12,
+},
+suggestModalHandle: {
+  width: 40,
+  height: 4,
+  backgroundColor: COLORS.border,
+  borderRadius: 2,
+  alignSelf: "center",
+  marginVertical: 12,
+},
+suggestModalTitle: {
+  fontSize: 14,
+  fontWeight: "700",
+  color: COLORS.textMuted,
+  textTransform: "uppercase",
+  letterSpacing: 0.5,
+  marginBottom: 8,
+},
 
 });
