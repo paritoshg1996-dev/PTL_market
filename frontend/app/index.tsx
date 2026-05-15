@@ -1562,5 +1562,4 @@ suggestModalTitle: {
   letterSpacing: 0.5,
   marginBottom: 8,
 },
-
 });
