@@ -501,23 +501,44 @@ return (
 <View style={styles.placementRow} testID="placement-segment">
   {PLACEMENT_OPTIONS.map((p) => {
     const on = placement === p.key;
+
     return (
       <TouchableOpacity
         key={p.key}
         testID={`placement-${p.key.replace(" ", "-")}`}
-        style={[styles.placementCard, on && (p.key === "Stackable" ? styles.placementCardGreen : styles.placementCardRed)]}
+        style={[
+          styles.placementCardCompact,
+          on &&
+            (p.key === "Stackable"
+              ? styles.placementCardGreen
+              : styles.placementCardRed),
+        ]}
         onPress={() => setPlacement(p.key)}
         activeOpacity={0.7}
       >
-        <Image source={p.image} style={styles.placementImg} resizeMode="contain" />
-        <Text style={[styles.placementLabel, on && (p.key === "Stackable" ? styles.placementLabelGreen : styles.placementLabelRed)]}>
+        <Image
+          source={p.image}
+          style={styles.placementImgCompact}
+          resizeMode="contain"
+        />
+
+        <Text
+          style={[
+            styles.placementLabelCompact,
+            on &&
+              (p.key === "Stackable"
+                ? styles.placementLabelGreen
+                : styles.placementLabelRed),
+          ]}
+        >
           {p.label}
         </Text>
       </TouchableOpacity>
     );
   })}
-</View>
-        <SectionTitle icon="image-outline" title="Photos (optional)" />
+</View> 
+		  
+		  <SectionTitle icon="image-outline" title="Photos (optional)" />
         <Text style={styles.label}>Attach up to 3 photos of the truck or available space</Text>
         <View style={styles.photoRow} testID="photos-row">
           {[0, 1, 2].map((idx) => {
@@ -1600,6 +1621,30 @@ inlineSuggestList: {
   overflow: "hidden",
   elevation: 12,
   maxHeight: 260,
+},
+	placementCardCompact: {
+  flex: 1,
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 10,
+  paddingVertical: 10,
+  paddingHorizontal: 12,
+  borderRadius: 14,
+  borderWidth: 1.5,
+  borderColor: COLORS.border,
+  backgroundColor: COLORS.surface,
+},
+
+placementImgCompact: {
+  width: 42,
+  height: 42,
+},
+
+placementLabelCompact: {
+  fontSize: 14,
+  fontWeight: "700",
+  color: COLORS.text,
 },
 	
 });
