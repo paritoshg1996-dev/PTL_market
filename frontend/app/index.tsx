@@ -639,20 +639,41 @@ useEffect(() => {
     try {
       const r = await fetch(`${API}/places?query=${encodeURIComponent(q)}`);
       const data = await r.json();
-      const mapped: CitySuggestion[] = (data.suggestedLocations || [])
-        .slice(0, 8)
-        .map((s: any) => {
-          const pincodeMatch = (s.placeAddress || "").match(/\b(\d{6})\b/);
-          const pincode = pincodeMatch ? pincodeMatch[1] : "";
-          return {
-            name: s.placeName,
-            city: s.placeAddress || "",
-            state: "",
-            pincode,
-          };
-        })
-        .filter((s: CitySuggestion) => s.pincode); // only show results with a pincode
-      if (!cancelled) setResults(mapped);
+      
+const allowedTypes = [
+  "CITY",
+  "DISTRICT",
+  "LOCALITY",
+  "VILLAGE",
+  "SUB_DISTRICT"
+];
+
+const mapped: CitySuggestion[] = (data.suggestedLocations || [])
+  .filter((s: any) =>
+    allowedTypes.includes(
+      String(s.type || s.placeType || "").toUpperCase()
+    )
+  )
+  .slice(0, 8)
+  .map((s: any) => {
+    const pincodeMatch = (s.placeAddress || "").match(/\b(\d{6})\b/);
+
+    const pincode = pincodeMatch
+      ? pincodeMatch[1]
+      : "";
+
+    return {
+      name: s.placeName,
+      city: s.placeAddress || "",
+      state: "",
+      pincode,
+    };
+  })
+  .filter((s: CitySuggestion) => s.pincode)
+  .sort((a, b) => a.name.length - b.name.length);
+      
+		
+		if (!cancelled) setResults(mapped);
     } catch { if (!cancelled) setResults([]); }
     finally { if (!cancelled) setSearching(false); }
   }, 350);
