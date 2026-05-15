@@ -768,31 +768,55 @@ const mapped: CitySuggestion[] = (data.suggestedLocations || [])
       {label ? <Text style={styles.label}>{label}</Text> : null}
 
       <View style={styles.inputWithIconWrap}>
-        {pin && info?.valid ? (
-          <View style={styles.selectedRouteCard}>
-            <Text style={styles.selectedRoutePin}>{pin}</Text>
-            <Text style={styles.selectedRouteCity} numberOfLines={2}>{info.city}</Text>
-          </View>
-        ) : (
-          <TextInput
-            testID={`${testIDPrefix}-input`}
-            style={[styles.input, { paddingRight: 50 }]}
-            placeholder="Pincode (e.g., 400069), city or speak it"
-            placeholderTextColor={COLORS.textSubtle}
-            value={text}
-            onChangeText={handleChange}
-            autoCapitalize="words"
-            autoCorrect={false}
-            maxLength={isPincodeMode ? 6 : 60}
-          />
-        )}
+        
+	{pin && info?.valid ? (
+  <View style={styles.selectedRouteBox}>
+    <View style={{ flex: 1 }}>
+      <Text style={styles.selectedRoutePinBig}>
+        {pin}
+      </Text>
 
-        {pin && info?.valid ? (
-          <TouchableOpacity style={styles.changeRouteBtn} onPress={() => onChange("", "", null)}>
-            <Ionicons name="create-outline" size={14} color={COLORS.primary} />
-            <Text style={styles.changeRouteText}>Change</Text>
-          </TouchableOpacity>
-        ) : null}
+      <Text
+        style={styles.selectedRouteCityBig}
+        numberOfLines={1}
+      >
+        {info.city}
+      </Text>
+
+      <Text
+        style={styles.selectedRouteState}
+        numberOfLines={1}
+      >
+        {info.state}
+      </Text>
+    </View>
+
+    <TouchableOpacity
+      style={styles.selectedRouteEditBtn}
+      onPress={() => onChange("", "", null)}
+    >
+      <Ionicons
+        name="create-outline"
+        size={18}
+        color={COLORS.primary}
+      />
+    </TouchableOpacity>
+  </View>
+) : (
+  <TextInput
+    testID={`${testIDPrefix}-input`}
+    style={[styles.input, { paddingRight: 50 }]}
+    placeholder="Pincode (e.g., 400069), city or speak it"
+    placeholderTextColor={COLORS.textSubtle}
+    value={text}
+    onChangeText={handleChange}
+    autoCapitalize="words"
+    autoCorrect={false}
+    maxLength={isPincodeMode ? 6 : 60}
+  />
+)}
+
+
 
         <TouchableOpacity testID={`${testIDPrefix}-mic-btn`} onPress={startVoice} style={styles.micBtnAbs} activeOpacity={0.7}>
           <Ionicons name="mic" size={20} color={listening ? COLORS.secondary : COLORS.primary} />
@@ -1646,5 +1670,41 @@ placementLabelCompact: {
   fontWeight: "700",
   color: COLORS.text,
 },
+selectedRouteBox: {
+  minHeight: 72,
+  backgroundColor: COLORS.surface,
+  borderWidth: 1,
+  borderColor: COLORS.border,
+  borderRadius: 14,
+  paddingHorizontal: 16,
+  paddingVertical: 12,
+  flexDirection: "row",
+  alignItems: "center",
+},
+
+selectedRoutePinBig: {
+  fontSize: 18,
+  fontWeight: "700",
+  color: COLORS.text,
+},
+
+selectedRouteCityBig: {
+  fontSize: 15,
+  fontWeight: "600",
+  color: COLORS.text,
+  marginTop: 2,
+},
+
+selectedRouteState: {
+  fontSize: 13,
+  color: COLORS.textMuted,
+  marginTop: 2,
+},
+
+selectedRouteEditBtn: {
+  marginLeft: 12,
+  padding: 8,
+},
+	
 	
 });
