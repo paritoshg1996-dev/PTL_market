@@ -789,42 +789,50 @@ const mapped: CitySuggestion[] = (data.suggestedLocations || [])
       {!isPincodeMode && searching ? <Text style={styles.hintMuted}>Searching…</Text> : null}
       {showNoMatch ? <Text style={[styles.hintMuted, { color: COLORS.danger }]}>No matches. Try a different spelling.</Text> : null}
 
-      {/* Dropdown as full-screen Modal so it never gets clipped */}
-      <Modal
-        visible={showSuggestions === true}
-        transparent
-        animationType="none"
-        onRequestClose={() => setResults(null)}
-      >
-        {/* Tap outside to close */}
-        <TouchableOpacity
-          style={{ flex: 1 }}
-          activeOpacity={1}
-          onPress={() => setResults(null)}
-        >
-          <View style={styles.suggestModalSheet}>
-            <View style={styles.suggestModalHandle} />
-            <Text style={styles.suggestModalTitle}>Select Location</Text>
-            <ScrollView keyboardShouldPersistTaps="handled">
-              {results && results.slice(0, 8).map((s, i, arr) => (
-                <TouchableOpacity
-                  key={`${s.pincode}-${s.name}-${i}`}
-                  testID={`${testIDPrefix}-suggest-${i}`}
-                  style={[styles.suggestRow, i === arr.length - 1 && { borderBottomWidth: 0 }]}
-                  onPress={() => pick(s)}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.flex1}>
-                    <Text style={styles.suggestName} numberOfLines={1}>{s.name}</Text>
-                    <Text style={styles.suggestSub} numberOfLines={2}>{s.city}</Text>
-                  </View>
-                  <Text style={styles.suggestPin}>{s.pincode}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+{showSuggestions ? (
+  <View style={styles.inlineSuggestList}>
+    <ScrollView
+      keyboardShouldPersistTaps="handled"
+      nestedScrollEnabled
+    >
+      {results &&
+        results.slice(0, 8).map((s, i, arr) => (
+          <TouchableOpacity
+            key={`${s.pincode}-${s.name}-${i}`}
+            testID={`${testIDPrefix}-suggest-${i}`}
+            style={[
+              styles.suggestRow,
+              i === arr.length - 1 && {
+                borderBottomWidth: 0,
+              },
+            ]}
+            onPress={() => pick(s)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.flex1}>
+              <Text
+                style={styles.suggestName}
+                numberOfLines={1}
+              >
+                {s.name}
+              </Text>
+
+              <Text
+                style={styles.suggestSub}
+                numberOfLines={2}
+              >
+                {s.city}
+              </Text>
+            </View>
+
+            <Text style={styles.suggestPin}>
+              {s.pincode}
+            </Text>
+          </TouchableOpacity>
+        ))}
+    </ScrollView>
+  </View>
+) : null}
 
       <VoiceListenOverlay visible={listening} onCancel={stopVoice} status={voiceStatus} />
     </View>
@@ -1583,4 +1591,15 @@ suggestModalTitle: {
   letterSpacing: 0.5,
   marginBottom: 8,
 },
+inlineSuggestList: {
+  marginTop: 6,
+  backgroundColor: COLORS.surface,
+  borderWidth: 1,
+  borderColor: COLORS.border,
+  borderRadius: 14,
+  overflow: "hidden",
+  elevation: 12,
+  maxHeight: 260,
+},
+	
 });
