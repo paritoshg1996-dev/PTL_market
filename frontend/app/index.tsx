@@ -1409,12 +1409,7 @@ placementLabelGreen: { color: "#1B5E20" },
 placementLabelRed: { color: "#C62828" },
 
 
-	routeInputsRow: {
-  flexDirection: "row",
-  alignItems: "flex-start",
-  marginBottom: 8,
-  gap: 8,
-},
+
 routeInputBox: {
   flex: 1,
   backgroundColor: COLORS.surface,
@@ -1495,10 +1490,7 @@ stepperDateText: {
 
 
 
-routeArrowMid: {
-  paddingHorizontal: 8,
-  paddingTop: 42,
-},
+
 
 selectedRouteCard: {
   backgroundColor: COLORS.surface,
