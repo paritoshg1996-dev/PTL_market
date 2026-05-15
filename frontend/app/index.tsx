@@ -1497,9 +1497,7 @@ stepperDateText: {
   marginBottom: 8,
 },
 
-routeInputBox: {
-  flex: 1,
-},
+
 
 routeArrowMid: {
   paddingHorizontal: 8,
