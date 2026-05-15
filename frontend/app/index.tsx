@@ -882,7 +882,7 @@ const mapped: CitySuggestion[] = (data.suggestedLocations || [])
       <VoiceListenOverlay visible={listening} onCancel={stopVoice} status={voiceStatus} />
     </View>
   );
-
+}
 // ============== SmartLocationInput (FindSpaceModal - uses Mappls /places endpoint) ==============
 function SmartLocationInput({ label, testIDPrefix, value, onResolve, error, onError }: {
   label: string; testIDPrefix: string; value: string;
