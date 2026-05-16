@@ -691,21 +691,50 @@ function RouteSearchModal({ visible, label, testIDPrefix, onClose, onSelect }: {
         const r = await fetch(`${API}/places?query=${encodeURIComponent(q)}`);
         const data = await r.json();
         // Accept all types — do not filter; extract pincode from address
-        const mapped: CitySuggestion[] = (data.suggestedLocations || [])
-          .map((s: any) => {
-            const pincodeMatch = (s.placeAddress || "").match(/\b(\d{6})\b/);
-            const pincode = pincodeMatch ? pincodeMatch[1] : "";
-            // Extract state from address (last meaningful segment after last comma)
-            const parts = (s.placeAddress || "").split(",").map((p: string) => p.trim()).filter(Boolean);
-            const state = parts.length >= 2 ? parts[parts.length - 2] : "";
-            return {
-              name: s.placeName,
-              city: s.placeAddress || "",
-              state,
-              pincode,
-            };
-          })
-          .filter((s: CitySuggestion) => s.pincode);
+    
+	const allLocations = [
+  ...(data.suggestedLocations || []),
+  ...(data.userAddedLocations || []),
+];
+
+// Build a name→pincode index from any result that has a pincode
+const pincodeByName: Record<string, string> = {};
+allLocations.forEach((s: any) => {
+  const match = (s.placeAddress || "").match(/\b(\d{6})\b/);
+  if (match) {
+    // Index by city name words so "Bhiwandi" matches "Bhiwandi Sub Post Office"
+    const words = (s.placeName || "").toLowerCase().split(/\s+/);
+    words.forEach((w: string) => {
+      if (w.length > 3 && !pincodeByName[w]) pincodeByName[w] = match[1];
+    });
+  }
+});
+
+const mapped: CitySuggestion[] = allLocations
+  .map((s: any) => {
+    const parts = (s.placeAddress || "").split(",").map((p: string) => p.trim()).filter(Boolean);
+    const state = parts.length >= 1 ? parts[parts.length - 1] : "";
+    const city = parts.length >= 2 ? parts[parts.length - 2] : parts[0] || "";
+
+    // Try to get pincode from address first, then fall back to name-index
+    const directMatch = (s.placeAddress || "").match(/\b(\d{6})\b/);
+    const nameWords = (s.placeName || "").toLowerCase().split(/\s+/);
+    const lookedUp = nameWords.map((w: string) => pincodeByName[w]).find(Boolean);
+    const pincode = directMatch ? directMatch[1] : (lookedUp || "");
+
+    return {
+      name: s.placeName,
+      city: s.placeAddress || "",
+      state,
+      pincode,
+    };
+  })
+  .filter((s: CitySuggestion) => s.pincode)
+  // Deduplicate by pincode+name, prefer shorter/simpler names (city over POI)
+  .filter((s, i, arr) => arr.findIndex(x => x.pincode === s.pincode && x.name === s.name) === i)
+  .slice(0, 10);
+		  
+		  
         if (!cancelled) setResults(mapped.slice(0, 10));
       } catch { if (!cancelled) setResults([]); }
       finally { if (!cancelled) setSearching(false); }
