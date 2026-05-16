@@ -396,39 +396,33 @@ return (
 		  
      <SectionTitle icon="navigate-outline" title="Route" />
 <View style={styles.routeInputsRow}>
-  <View style={styles.routeInputBox}>
-    <Text style={styles.routeBoxLabel}>Origin</Text>
-    <SmartRouteInput
-      label=""
-      testIDPrefix="origin"
-      text={originText}
-      pin={originPin}
-      info={originInfo}
-      onChange={(t, pin, info) => {
-        setOriginText(t);
-        setOriginPin(pin);
-        setOriginInfo(info);
-      }}
-    />
-  </View>
+  <SmartRouteInput
+    label="Origin"
+    testIDPrefix="origin"
+    text={originText}
+    pin={originPin}
+    info={originInfo}
+    onChange={(t, pin, info) => {
+      setOriginText(t);
+      setOriginPin(pin);
+      setOriginInfo(info);
+    }}
+  />
   <View style={styles.routeArrowMid}>
     <Ionicons name="arrow-forward" size={20} color={COLORS.secondary} />
   </View>
-  <View style={styles.routeInputBox}>
-    <Text style={styles.routeBoxLabel}>Destination</Text>
-    <SmartRouteInput
-      label=""
-      testIDPrefix="dest"
-      text={destText}
-      pin={destPin}
-      info={destInfo}
-      onChange={(t, pin, info) => {
-        setDestText(t);
-        setDestPin(pin);
-        setDestInfo(info);
-      }}
-    />
-  </View>
+  <SmartRouteInput
+    label="Destination"
+    testIDPrefix="dest"
+    text={destText}
+    pin={destPin}
+    info={destInfo}
+    onChange={(t, pin, info) => {
+      setDestText(t);
+      setDestPin(pin);
+      setDestInfo(info);
+    }}
+  />
 </View>
         <SectionTitle icon="bus-outline" title="Truck Type" />
         <View style={styles.truckRow} testID="truck-types-row">
@@ -639,100 +633,129 @@ function VoiceListenOverlay({ visible, onCancel, status }: { visible: boolean; o
   );
 }
 
-// ============== SmartRouteInput (Post Load - uses /city endpoint) ==============
-function SmartRouteInput({ label, testIDPrefix, text, pin, info, onChange }: {
-  label: string; testIDPrefix: string; text: string; pin: string; info: RouteInfo;
-  onChange: (text: string, pin: string, info: RouteInfo) => void;
+// ============== RouteSearchModal ==============
+const RECENT_KEY_PREFIX = "recent_routes_";
+
+async function getRecentSearches(prefix: string): Promise<CitySuggestion[]> {
+  try {
+    const raw = await AsyncStorage.getItem(RECENT_KEY_PREFIX + prefix);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+async function saveRecentSearch(prefix: string, s: CitySuggestion) {
+  try {
+    const existing = await getRecentSearches(prefix);
+    const filtered = existing.filter((r) => r.pincode !== s.pincode);
+    const updated = [s, ...filtered].slice(0, 5);
+    await AsyncStorage.setItem(RECENT_KEY_PREFIX + prefix, JSON.stringify(updated));
+  } catch {}
+}
+
+function RouteSearchModal({ visible, label, testIDPrefix, onClose, onSelect }: {
+  visible: boolean;
+  label: string;
+  testIDPrefix: string;
+  onClose: () => void;
+  onSelect: (text: string, pin: string, info: RouteInfo) => void;
 }) {
-  const isPincodeMode = text.length === 0 || /^\d/.test(text);
-  const [results, setResults] = useState<CitySuggestion[] | null>(null);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<CitySuggestion[]>([]);
+  const [recents, setRecents] = useState<CitySuggestion[]>([]);
   const [searching, setSearching] = useState(false);
   const [listening, setListening] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState("Speak the city name or pincode");
+  const inputRef = useRef<TextInput>(null);
 
-useEffect(() => {
-  if (isPincodeMode) { setResults(null); return; }
-  const q = text.trim();
-  if (q.length < 3) { setResults(null); return; }
-  let cancelled = false;
-  setSearching(true);
-  const t = setTimeout(async () => {
-    try {
-      const r = await fetch(`${API}/places?query=${encodeURIComponent(q)}`);
-      const data = await r.json();
-      
-const allowedTypes = [
-  "CITY",
-  "DISTRICT",
-  "LOCALITY",
-  "VILLAGE",
-  "SUB_DISTRICT"
-];
-
-const mapped: CitySuggestion[] = (data.suggestedLocations || [])
-  .filter((s: any) =>
-    allowedTypes.includes(
-      String(s.type || s.placeType || "").toUpperCase()
-    )
-  )
-  .slice(0, 8)
-  .map((s: any) => {
-    const pincodeMatch = (s.placeAddress || "").match(/\b(\d{6})\b/);
-
-    const pincode = pincodeMatch
-      ? pincodeMatch[1]
-      : "";
-
-    return {
-      name: s.placeName,
-      city: s.placeAddress || "",
-      state: "",
-      pincode,
-    };
-  })
-  .filter((s: CitySuggestion) => s.pincode)
-  .sort((a, b) => a.name.length - b.name.length);
-      
-		
-		if (!cancelled) setResults(mapped);
-    } catch { if (!cancelled) setResults([]); }
-    finally { if (!cancelled) setSearching(false); }
-  }, 350);
-  return () => { cancelled = true; clearTimeout(t); };
-}, [text, isPincodeMode]);
+  const isPincodeMode = query.length === 0 || /^\d/.test(query);
 
   useEffect(() => {
-    if (!isPincodeMode) return;
-    if (text.length === 6) {
-      let cancelled = false;
-      (async () => {
-        try {
-          const r = await fetch(`${API}/pincode/${text}`);
-          const j = await r.json();
-          if (!cancelled) onChange(text, text, { city: j.city || "", state: j.state || "", valid: !!j.valid });
-        } catch { if (!cancelled) onChange(text, text, { city: "", state: "", valid: false }); }
-      })();
-      return () => { cancelled = true; };
+    if (visible) {
+      setQuery("");
+      setResults([]);
+      setListening(false);
+      getRecentSearches(testIDPrefix).then(setRecents);
+      setTimeout(() => inputRef.current?.focus(), 120);
     }
-  }, [text, isPincodeMode]);
+  }, [visible]);
+
+  // Name/city search via Mappls places API
+  useEffect(() => {
+    if (isPincodeMode) { setResults([]); return; }
+    const q = query.trim();
+    if (q.length < 2) { setResults([]); return; }
+    let cancelled = false;
+    setSearching(true);
+    const t = setTimeout(async () => {
+      try {
+        const r = await fetch(`${API}/places?query=${encodeURIComponent(q)}`);
+        const data = await r.json();
+        // Accept all types — do not filter; extract pincode from address
+        const mapped: CitySuggestion[] = (data.suggestedLocations || [])
+          .map((s: any) => {
+            const pincodeMatch = (s.placeAddress || "").match(/\b(\d{6})\b/);
+            const pincode = pincodeMatch ? pincodeMatch[1] : "";
+            // Extract state from address (last meaningful segment after last comma)
+            const parts = (s.placeAddress || "").split(",").map((p: string) => p.trim()).filter(Boolean);
+            const state = parts.length >= 2 ? parts[parts.length - 2] : "";
+            return {
+              name: s.placeName,
+              city: s.placeAddress || "",
+              state,
+              pincode,
+            };
+          })
+          .filter((s: CitySuggestion) => s.pincode);
+        if (!cancelled) setResults(mapped.slice(0, 10));
+      } catch { if (!cancelled) setResults([]); }
+      finally { if (!cancelled) setSearching(false); }
+    }, 300);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [query, isPincodeMode]);
+
+  // Pincode lookup
+  useEffect(() => {
+    if (!isPincodeMode || query.length !== 6) return;
+    let cancelled = false;
+    (async () => {
+      setSearching(true);
+      try {
+        const r = await fetch(`${API}/pincode/${query}`);
+        const j = await r.json();
+        if (!cancelled && j.valid) {
+          const s: CitySuggestion = { name: j.city || query, city: j.city || "", state: j.state || "", pincode: query };
+          setResults([s]);
+        } else if (!cancelled) setResults([]);
+      } catch { if (!cancelled) setResults([]); }
+      finally { if (!cancelled) setSearching(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [query, isPincodeMode]);
 
   const handleChange = (t: string) => {
-    if (t.length === 0) { onChange("", "", null); setResults(null); return; }
-    if (/^\d/.test(t)) {
-      const cleaned = t.replace(/\D/g, "").slice(0, 6);
-      onChange(cleaned, cleaned.length === 6 ? cleaned : "", null);
-    } else { onChange(t, "", null); }
+    if (/^\d/.test(t) || t.length === 0) {
+      setQuery(t.replace(/\D/g, "").slice(0, 6));
+    } else {
+      setQuery(t);
+    }
   };
 
-  const pick = (s: CitySuggestion) => { onChange(s.name, s.pincode, { city: s.city, state: s.state, valid: true }); setResults(null); };
+  const pick = async (s: CitySuggestion) => {
+    await saveRecentSearch(testIDPrefix, s);
+    onSelect(s.name, s.pincode, { city: s.city, state: s.state, valid: true });
+    onClose();
+  };
 
   const stopVoice = useCallback(() => { try { ExpoSpeechRecognitionModule.stop(); } catch {} setListening(false); }, []);
 
   useSpeechRecognitionEvent("result", (event: any) => {
     if (!listening) return;
     const transcript: string = event?.results?.[0]?.transcript || "";
-    if (event?.isFinal) { const cleaned = transcript.replace(/[.,!?]/g, "").replace(/\s+/g, " ").trim(); if (cleaned) handleChange(cleaned); stopVoice(); }
-    else if (transcript) setVoiceStatus(`Heard: "${transcript.trim()}"`);
+    if (event?.isFinal) {
+      const cleaned = transcript.replace(/[.,!?]/g, "").replace(/\s+/g, " ").trim();
+      if (cleaned) handleChange(cleaned);
+      stopVoice();
+    } else if (transcript) setVoiceStatus(`Heard: "${transcript.trim()}"`);
   });
 
   useSpeechRecognitionEvent("error", (event: any) => {
@@ -744,7 +767,7 @@ const mapped: CitySuggestion[] = (data.suggestedLocations || [])
     setTimeout(stopVoice, 1200);
   });
 
-  useSpeechRecognitionEvent("end", () => { if (!listening) return; setListening(false); });
+  useSpeechRecognitionEvent("end", () => { if (listening) setListening(false); });
 
   const startVoice = async () => {
     try {
@@ -754,135 +777,187 @@ const mapped: CitySuggestion[] = (data.suggestedLocations || [])
       setVoiceStatus("Speak the city name or pincode");
       setListening(true);
       ExpoSpeechRecognitionModule.start({ lang: "en-IN", interimResults: true, continuous: false, maxAlternatives: 1, addsPunctuation: false });
-    } catch (err) { console.warn("Voice start failed:", err); setListening(false); Alert.alert("Voice not available", "Voice input is not available on this device."); }
+    } catch (err) { setListening(false); Alert.alert("Voice not available", "Voice input is not available on this device."); }
   };
 
-  const showSuggestions = !isPincodeMode && text.trim().length >= 3 && results && results.length > 0;
-  const showNoMatch = !isPincodeMode && !searching && results && results.length === 0 && text.trim().length >= 3;
-  const showShortHint = !isPincodeMode && text.trim().length > 0 && text.trim().length < 3;
+  const showRecents = query.length === 0 && recents.length > 0;
+  const list: CitySuggestion[] = showRecents ? recents : results;
 
-  
-	
-	return (
-    <View style={styles.fieldWrap}>
-      {label ? <Text style={styles.label}>{label}</Text> : null}
-
-      <View style={styles.inputWithIconWrap}>
-        
-	{pin && info?.valid ? (
-  <View style={styles.selectedRouteBox}>
-    <View style={{ flex: 1 }}>
-      <Text style={styles.selectedRoutePinBig}>
-        {pin}
-      </Text>
-
-      <Text
-        style={styles.selectedRouteCityBig}
-        numberOfLines={1}
-      >
-        {info.city}
-      </Text>
-
-      <Text
-        style={styles.selectedRouteState}
-        numberOfLines={1}
-      >
-        {info.state}
-      </Text>
-    </View>
-
-    <TouchableOpacity
-      style={styles.selectedRouteEditBtn}
-      onPress={() => onChange("", "", null)}
-    >
-      <Ionicons
-        name="create-outline"
-        size={18}
-        color={COLORS.primary}
-      />
-    </TouchableOpacity>
-  </View>
-) : (
-  <TextInput
-    testID={`${testIDPrefix}-input`}
-    style={[styles.input, { paddingRight: 50 }]}
-    placeholder="Pincode (e.g., 400069), city or speak it"
-    placeholderTextColor={COLORS.textSubtle}
-    value={text}
-    onChangeText={handleChange}
-    autoCapitalize="words"
-    autoCorrect={false}
-    maxLength={isPincodeMode ? 6 : 60}
-  />
-)}
-
-
-
-        <TouchableOpacity testID={`${testIDPrefix}-mic-btn`} onPress={startVoice} style={styles.micBtnAbs} activeOpacity={0.7}>
-          <Ionicons name="mic" size={20} color={listening ? COLORS.secondary : COLORS.primary} />
-        </TouchableOpacity>
-      </View>
-
-      {listening ? (
-        <View style={styles.voiceInlineStatus} testID={`${testIDPrefix}-voice-inline`}>
-          <Ionicons name="radio-outline" size={12} color={COLORS.primary} />
-          <Text style={styles.voiceInlineText}>{voiceStatus}</Text>
-        </View>
-      ) : null}
-      {isPincodeMode && text.length > 0 ? <PincodeHint info={info} pin={text} testID={`${testIDPrefix}-pincode-hint`} /> : null}
-      {showShortHint ? <Text style={styles.hintMuted}>Type at least 3 letters to search…</Text> : null}
-      {!isPincodeMode && searching ? <Text style={styles.hintMuted}>Searching…</Text> : null}
-      {showNoMatch ? <Text style={[styles.hintMuted, { color: COLORS.danger }]}>No matches. Try a different spelling.</Text> : null}
-
-{showSuggestions ? (
-  <View style={styles.inlineSuggestList}>
-    <ScrollView
-      keyboardShouldPersistTaps="handled"
-      nestedScrollEnabled
-    >
-      {results &&
-        results.slice(0, 8).map((s, i, arr) => (
-          <TouchableOpacity
-            key={`${s.pincode}-${s.name}-${i}`}
-            testID={`${testIDPrefix}-suggest-${i}`}
-            style={[
-              styles.suggestRow,
-              i === arr.length - 1 && {
-                borderBottomWidth: 0,
-              },
-            ]}
-            onPress={() => pick(s)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.flex1}>
-              <Text
-                style={styles.suggestName}
-                numberOfLines={1}
-              >
-                {s.name}
-              </Text>
-
-              <Text
-                style={styles.suggestSub}
-                numberOfLines={2}
-              >
-                {s.city}
-              </Text>
-            </View>
-
-            <Text style={styles.suggestPin}>
-              {s.pincode}
-            </Text>
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <SafeAreaView style={[styles.fill, { backgroundColor: COLORS.bg }]} edges={["top"]}>
+        {/* Header */}
+        <View style={srm.header}>
+          <TouchableOpacity onPress={onClose} style={srm.backBtn} testID={`${testIDPrefix}-modal-back`}>
+            <Ionicons name="arrow-back" size={24} color={COLORS.text} />
           </TouchableOpacity>
-        ))}
-    </ScrollView>
-  </View>
-) : null}
+          <View style={srm.searchBar}>
+            <Ionicons name="search" size={18} color={COLORS.textMuted} style={{ marginRight: 8 }} />
+            <TextInput
+              ref={inputRef}
+              testID={`${testIDPrefix}-modal-input`}
+              style={srm.searchInput}
+              placeholder={`Search ${label.toLowerCase()}…`}
+              placeholderTextColor={COLORS.textSubtle}
+              value={query}
+              onChangeText={handleChange}
+              autoCapitalize="words"
+              autoCorrect={false}
+              returnKeyType="search"
+            />
+            {query.length > 0 ? (
+              <TouchableOpacity onPress={() => { setQuery(""); setResults([]); }}>
+                <Ionicons name="close-circle" size={18} color={COLORS.textMuted} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          <TouchableOpacity onPress={listening ? stopVoice : startVoice} style={srm.micBtn} testID={`${testIDPrefix}-modal-mic`}>
+            <Ionicons name="mic" size={22} color={listening ? COLORS.secondary : COLORS.primary} />
+          </TouchableOpacity>
+        </View>
 
-      <VoiceListenOverlay visible={listening} onCancel={stopVoice} status={voiceStatus} />
+        {listening ? (
+          <View style={srm.voiceRow}>
+            <Ionicons name="radio-outline" size={13} color={COLORS.primary} />
+            <Text style={srm.voiceText}>{voiceStatus}</Text>
+          </View>
+        ) : null}
+
+        {/* Section label */}
+        {showRecents ? (
+          <Text style={srm.sectionLabel}>Recent Searches</Text>
+        ) : query.length >= 2 && !searching && results.length === 0 ? (
+          <Text style={srm.noResultText}>No results found. Try a different name or pincode.</Text>
+        ) : searching ? (
+          <View style={srm.searchingRow}>
+            <ActivityIndicator size="small" color={COLORS.primary} />
+            <Text style={srm.searchingText}>Searching…</Text>
+          </View>
+        ) : null}
+
+        <FlatList
+          data={list}
+          keyExtractor={(s, i) => `${s.pincode}-${i}`}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ paddingBottom: 40 }}
+          renderItem={({ item: s, index: i }) => (
+            <TouchableOpacity
+              key={`${s.pincode}-${i}`}
+              testID={`${testIDPrefix}-modal-suggest-${i}`}
+              style={srm.row}
+              onPress={() => pick(s)}
+              activeOpacity={0.7}
+            >
+              <View style={srm.rowIcon}>
+                <Ionicons name={showRecents ? "time-outline" : "location-outline"} size={20} color={COLORS.textMuted} />
+              </View>
+              <View style={srm.rowBody}>
+                <Text style={srm.rowName} numberOfLines={1}>{s.name}</Text>
+                <Text style={srm.rowSub} numberOfLines={1}>{s.city}</Text>
+              </View>
+              <Text style={srm.rowPin}>{s.pincode}</Text>
+            </TouchableOpacity>
+          )}
+        />
+        <VoiceListenOverlay visible={false} onCancel={stopVoice} status={voiceStatus} />
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
+// Styles for RouteSearchModal
+const srm = StyleSheet.create({
+  header: { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 10, backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border, gap: 8 },
+  backBtn: { padding: 6 },
+  searchBar: { flex: 1, flexDirection: "row", alignItems: "center", backgroundColor: COLORS.bg, borderRadius: 12, paddingHorizontal: 12, paddingVertical: Platform.OS === "ios" ? 10 : 6 },
+  searchInput: { flex: 1, fontSize: 16, color: COLORS.text },
+  micBtn: { padding: 6 },
+  voiceRow: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: "#EFF3FF" },
+  voiceText: { fontSize: 13, color: COLORS.primary },
+  sectionLabel: { fontSize: 12, fontWeight: "700", color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 0.5, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 6 },
+  noResultText: { fontSize: 14, color: COLORS.danger, paddingHorizontal: 16, paddingTop: 20, textAlign: "center" },
+  searchingRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16, paddingTop: 20 },
+  searchingText: { fontSize: 14, color: COLORS.textMuted },
+  row: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: COLORS.surface },
+  rowIcon: { width: 36, alignItems: "center" },
+  rowBody: { flex: 1, marginHorizontal: 10 },
+  rowName: { fontSize: 15, fontWeight: "600", color: COLORS.text },
+  rowSub: { fontSize: 13, color: COLORS.textMuted, marginTop: 2 },
+  rowPin: { fontSize: 13, fontWeight: "700", color: COLORS.primary },
+});
+
+// ============== SmartRouteInput (Post Load - tap-to-open modal) ==============
+function SmartRouteInput({ label, testIDPrefix, text, pin, info, onChange }: {
+  label: string; testIDPrefix: string; text: string; pin: string; info: RouteInfo;
+  onChange: (text: string, pin: string, info: RouteInfo) => void;
+}) {
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const hasValue = pin && info?.valid;
+
+  return (
+    <View style={sriStyles.wrap}>
+      <Text style={sriStyles.label}>{label}</Text>
+      <TouchableOpacity
+        testID={`${testIDPrefix}-tap-card`}
+        style={[sriStyles.card, hasValue && sriStyles.cardFilled]}
+        onPress={() => setModalOpen(true)}
+        activeOpacity={0.75}
+      >
+        {hasValue ? (
+          <>
+            <Text style={sriStyles.pin}>{pin}</Text>
+            <Text style={sriStyles.city} numberOfLines={1}>{text || info.city.split(",")[0]}</Text>
+            <Text style={sriStyles.state} numberOfLines={1}>{info.state}</Text>
+          </>
+        ) : (
+          <View style={sriStyles.placeholder}>
+            <Ionicons name="search" size={16} color={COLORS.textMuted} style={{ marginRight: 6 }} />
+            <Text style={sriStyles.placeholderText}>Pincode or city…</Text>
+          </View>
+        )}
+        {hasValue ? (
+          <TouchableOpacity
+            style={sriStyles.clearBtn}
+            onPress={(e) => { e.stopPropagation(); onChange("", "", null); }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="close-circle" size={18} color={COLORS.textMuted} />
+          </TouchableOpacity>
+        ) : null}
+      </TouchableOpacity>
+      <RouteSearchModal
+        visible={modalOpen}
+        label={label}
+        testIDPrefix={testIDPrefix}
+        onClose={() => setModalOpen(false)}
+        onSelect={(t, p, i) => { onChange(t, p, i); setModalOpen(false); }}
+      />
     </View>
   );
 }
+
+const sriStyles = StyleSheet.create({
+  wrap: { flex: 1 },
+  label: { fontSize: 11, fontWeight: "700", color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 },
+  card: {
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    minHeight: 88,
+    justifyContent: "center",
+  },
+  cardFilled: { borderColor: COLORS.primary, borderWidth: 1.5 },
+  pin: { fontSize: 18, fontWeight: "700", color: COLORS.text, marginBottom: 2 },
+  city: { fontSize: 15, fontWeight: "600", color: COLORS.text, marginBottom: 2 },
+  state: { fontSize: 13, color: COLORS.textMuted },
+  placeholder: { flexDirection: "row", alignItems: "center" },
+  placeholderText: { fontSize: 14, color: COLORS.textSubtle },
+  clearBtn: { position: "absolute", top: 10, right: 10 },
+});
 // ============== SmartLocationInput (FindSpaceModal - uses Mappls /places endpoint) ==============
 function SmartLocationInput({ label, testIDPrefix, value, onResolve, error, onError }: {
   label: string; testIDPrefix: string; value: string;
@@ -1559,7 +1634,8 @@ stepperDateText: {
 	routeInputsRow: {
   flexDirection: "row",
   alignItems: "flex-start",
-  marginBottom: 8,
+  marginBottom: 14,
+  gap: 0,
 },
 
 
