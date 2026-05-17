@@ -212,11 +212,176 @@ function ProfileSetup({ onSave }: { onSave: (p: Profile) => void }) {
   );
 }
 
+// ============== Shared types ==============
+type CitySuggestion = { name: string; city: string; state: string; pincode: string };
+type RouteInfo = { city: string; state: string; valid: boolean } | null;
+
+// ============== EditLoadModal ==============
+function EditLoadModal({ load, visible, onClose, onSaved }: { load: Load; visible: boolean; onClose: () => void; onSaved: () => void }) {
+  const [originText, setOriginText] = useState(load.origin_city || load.origin_pincode);
+  const [originPin, setOriginPin] = useState(load.origin_pincode);
+  const [originInfo, setOriginInfo] = useState<RouteInfo>({ city: load.origin_city, state: load.origin_state, valid: true });
+  const [destText, setDestText] = useState(load.destination_city || load.destination_pincode);
+  const [destPin, setDestPin] = useState(load.destination_pincode);
+  const [destInfo, setDestInfo] = useState<RouteInfo>({ city: load.destination_city, state: load.destination_state, valid: true });
+  const [weight, setWeight] = useState(load.weight_tons || 1);
+  const [placement, setPlacement] = useState(load.cargo_placement || "Stackable");
+  const [truckType, setTruckType] = useState(load.truck_type || "");
+  const [date, setDate] = useState(new Date(load.loading_date));
+  const [busy, setBusy] = useState(false);
+  const [weightModalVisible, setWeightModalVisible] = useState(false);
+  const [weightInput, setWeightInput] = useState("");
+
+  const changeDate = (days: number) => {
+    setDate(prev => {
+      const d = new Date(prev); d.setDate(d.getDate() + days);
+      if (d < new Date(new Date().setHours(0,0,0,0))) return prev;
+      return d;
+    });
+  };
+
+  const save = async () => {
+    if (!/^\d{6}$/.test(originPin)) return Alert.alert("Invalid Origin", "Select a valid origin.");
+    if (!/^\d{6}$/.test(destPin)) return Alert.alert("Invalid Destination", "Select a valid destination.");
+    if (!truckType) return Alert.alert("Required", "Select a truck type.");
+    if (!weight || weight <= 0) return Alert.alert("Invalid", "Enter valid weight.");
+    setBusy(true);
+    try {
+      const payload = {
+        origin_pincode: originPin, origin_city: originInfo?.city || "", origin_state: originInfo?.state || "",
+        destination_pincode: destPin, destination_city: destInfo?.city || "", destination_state: destInfo?.state || "",
+        cargo_placement: placement, truck_type: truckType, weight_tons: weight, space_cuft: null,
+        loading_date: date.toISOString().slice(0, 10),
+      };
+      const res = await fetch(`${API}/loads/${load.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      if (!res.ok) throw new Error("Failed");
+      onSaved(); onClose();
+    } catch { Alert.alert("Error", "Failed to update load. Please try again."); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalBackdrop}>
+        <View style={[styles.modalSheet, { maxHeight: "94%" }]} testID="edit-load-modal">
+          <View style={styles.modalHandle} />
+          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            <Text style={styles.modalTitle}>Edit Posting</Text>
+
+            <SectionTitle icon="navigate-outline" title="Route" />
+            <View style={styles.routeInputsRow}>
+              <SmartRouteInput label="Origin" testIDPrefix="edit-origin" text={originText} pin={originPin} info={originInfo}
+                onChange={(t, p, i) => { setOriginText(t); setOriginPin(p); setOriginInfo(i); }} />
+              <View style={styles.routeArrowMid}><Ionicons name="arrow-forward" size={20} color={COLORS.secondary} /></View>
+              <SmartRouteInput label="Destination" testIDPrefix="edit-dest" text={destText} pin={destPin} info={destInfo}
+                onChange={(t, p, i) => { setDestText(t); setDestPin(p); setDestInfo(i); }} />
+            </View>
+
+            <SectionTitle icon="bus-outline" title="Truck Type" />
+            <View style={styles.truckRow}>
+              {TRUCK_TYPES.map((t) => {
+                const on = truckType === t.name;
+                return (
+                  <TouchableOpacity key={t.name} onPress={() => setTruckType(t.name)} style={[styles.truckCard, on && styles.truckCardOn]} activeOpacity={0.7}>
+                    <Image source={t.image} style={styles.truckImg} resizeMode="contain" />
+                    <Text style={[styles.truckLabel, on && styles.truckLabelOn]}>{t.name}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <SectionTitle icon="scale-outline" title="Weight Capacity" />
+            <View style={styles.stepperRow}>
+              <TouchableOpacity style={styles.stepperBtn} onPress={() => setWeight(w => Math.max(0.5, parseFloat((w - 0.5).toFixed(1))))}>
+                <Text style={styles.stepperBtnText}>−</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.stepperCenter} activeOpacity={0.8} onPress={() => { setWeightInput(String(weight)); setWeightModalVisible(true); }}>
+                <Text style={styles.stepperValue}>{weight.toFixed(1)}</Text>
+                <Text style={styles.stepperUnit}>tons</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.stepperBtn} onPress={() => setWeight(w => parseFloat((w + 0.5).toFixed(1)))}>
+                <Text style={styles.stepperBtnText}>+</Text>
+              </TouchableOpacity>
+            </View>
+
+            <SectionTitle icon="layers-outline" title="Cargo Placement" />
+            <View style={styles.placementRow}>
+              {PLACEMENT_OPTIONS.map((p) => {
+                const on = placement === p.key;
+                return (
+                  <TouchableOpacity key={p.key} style={[styles.placementCardCompact, on && (p.key === "Stackable" ? styles.placementCardGreen : styles.placementCardRed)]}
+                    onPress={() => setPlacement(p.key)} activeOpacity={0.7}>
+                    <Image source={p.image} style={styles.placementImgCompact} resizeMode="contain" />
+                    <Text style={[styles.placementLabelCompact, on && (p.key === "Stackable" ? styles.placementLabelGreen : styles.placementLabelRed)]}>{p.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <SectionTitle icon="calendar-outline" title="Loading Date" />
+            <View style={styles.stepperRow}>
+              <TouchableOpacity style={styles.stepperBtn} onPress={() => changeDate(-1)}><Text style={styles.stepperBtnText}>−</Text></TouchableOpacity>
+              <View style={styles.stepperCenter}>
+                <Ionicons name="calendar" size={14} color={COLORS.primary} />
+                <Text style={styles.stepperDateText}>{date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</Text>
+              </View>
+              <TouchableOpacity style={styles.stepperBtn} onPress={() => changeDate(1)}><Text style={styles.stepperBtnText}>+</Text></TouchableOpacity>
+            </View>
+
+            <View style={[styles.row, { marginTop: 16, gap: 10 }]}>
+              <TouchableOpacity style={[styles.outlineBtn, styles.flex1]} onPress={onClose} disabled={busy}>
+                <Text style={styles.outlineBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.primaryBtn, styles.flex1, { marginTop: 0 }]} onPress={save} disabled={busy}>
+                {busy ? <ActivityIndicator color={COLORS.surface} /> : <Text style={styles.primaryBtnText}>Save Changes</Text>}
+              </TouchableOpacity>
+            </View>
+            <View style={{ height: 20 }} />
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
+
+      {/* Weight quick-entry modal */}
+      <Modal visible={weightModalVisible} transparent animationType="fade" onRequestClose={() => setWeightModalVisible(false)}>
+        <TouchableOpacity style={wmStyles.backdrop} activeOpacity={1} onPress={() => setWeightModalVisible(false)}>
+          <TouchableOpacity style={wmStyles.sheet} activeOpacity={1}>
+            <Text style={wmStyles.title}>Enter Weight</Text>
+            <TextInput
+              style={wmStyles.input}
+              value={weightInput}
+              onChangeText={setWeightInput}
+              keyboardType="decimal-pad"
+              autoFocus
+              placeholder="e.g. 15"
+              placeholderTextColor={COLORS.textSubtle}
+            />
+            <View style={wmStyles.presets}>
+              {[1,2,5,10,15,20,25].map(n => (
+                <TouchableOpacity key={n} style={wmStyles.preset} onPress={() => setWeightInput(String(n))}>
+                  <Text style={wmStyles.presetText}>{n}T</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TouchableOpacity style={wmStyles.btn} onPress={() => {
+              const n = parseFloat(weightInput);
+              if (!isNaN(n) && n > 0) setWeight(parseFloat(n.toFixed(1)));
+              setWeightModalVisible(false);
+            }}>
+              <Text style={wmStyles.btnText}>Set Weight</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+    </Modal>
+  );
+}
+
 // ============== Profile Screen ==============
 function ProfileScreen({ profile, onClose, onEdit }: { profile: Profile; onClose: () => void; onEdit: () => void }) {
   const [myLoads, setMyLoads] = useState<Load[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [editLoad, setEditLoad] = useState<Load | null>(null);
 
   const fetchMy = useCallback(async () => {
     try {
@@ -229,6 +394,18 @@ function ProfileScreen({ profile, onClose, onEdit }: { profile: Profile; onClose
   }, [profile.phone]);
 
   useEffect(() => { fetchMy(); }, [fetchMy]);
+
+  const deleteLoad = (load: Load) => {
+    Alert.alert("Delete Posting", "Are you sure you want to delete this load posting? This cannot be undone.", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Delete", style: "destructive", onPress: async () => {
+        try {
+          await fetch(`${API}/loads/${load.id}`, { method: "DELETE" });
+          setMyLoads(prev => prev.filter(l => l.id !== load.id));
+        } catch { Alert.alert("Error", "Failed to delete. Please try again."); }
+      }},
+    ]);
+  };
 
   const initials = profile.name.split(" ").map((p) => p[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
 
@@ -276,11 +453,41 @@ function ProfileScreen({ profile, onClose, onEdit }: { profile: Profile; onClose
             <Text style={styles.emptySub}>Post your first load to see it listed here.</Text>
           </View>
         ) : null}
-        renderItem={({ item }) => <LoadCard load={item} isMine={true} />}
+        renderItem={({ item }) => (
+          <View>
+            <LoadCard load={item} isMine={true} />
+            <View style={profileStyles.actionRow}>
+              <TouchableOpacity style={profileStyles.editBtn} onPress={() => setEditLoad(item)} testID={`edit-load-${item.id}`}>
+                <Ionicons name="create-outline" size={15} color={COLORS.primary} />
+                <Text style={profileStyles.editBtnText}>Edit</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={profileStyles.deleteBtn} onPress={() => deleteLoad(item)} testID={`delete-load-${item.id}`}>
+                <Ionicons name="trash-outline" size={15} color={COLORS.danger} />
+                <Text style={profileStyles.deleteBtnText}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
       />
+      {editLoad && (
+        <EditLoadModal
+          load={editLoad}
+          visible={!!editLoad}
+          onClose={() => setEditLoad(null)}
+          onSaved={() => { setEditLoad(null); fetchMy(); }}
+        />
+      )}
     </SafeAreaView>
   );
 }
+
+const profileStyles = StyleSheet.create({
+  actionRow: { flexDirection: "row", gap: 10, marginTop: -6, marginBottom: 14, paddingHorizontal: 2 },
+  editBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: 10, borderWidth: 1.5, borderColor: COLORS.primary, backgroundColor: "#EEF2FA" },
+  editBtnText: { color: COLORS.primary, fontWeight: "700", fontSize: 13 },
+  deleteBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: 10, borderWidth: 1.5, borderColor: COLORS.danger, backgroundColor: "#FDF1F1" },
+  deleteBtnText: { color: COLORS.danger, fontWeight: "700", fontSize: 13 },
+});
 
 // ============== Post Load ==============
 function PostLoadScreen({ profile, onPosted }: { profile: Profile; onPosted: () => void }) {
@@ -296,6 +503,8 @@ function PostLoadScreen({ profile, onPosted }: { profile: Profile; onPosted: () 
  
 const [weight, setWeight] = useState(1.0);
 const [date, setDate] = useState<Date>(new Date());
+const [weightModalVisible, setWeightModalVisible] = useState(false);
+const [weightInput, setWeightInput] = useState("");
 
 const changeDate = (days: number) => {
   setDate(prev => {
@@ -446,41 +655,13 @@ return (
     <Text style={styles.stepperBtnText}>−</Text>
   </TouchableOpacity>
   <TouchableOpacity
-  style={styles.stepperCenter}
-  activeOpacity={0.8}
-  onPress={() => {
-    Alert.prompt(
-      "Weight Capacity",
-      "Enter weight in tons",
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "OK",
-          onPress: (v) => {
-            const n = parseFloat(v || "");
-
-            if (!isNaN(n) && n > 0) {
-              setWeight(n);
-            }
-          },
-        },
-      ],
-      "plain-text",
-      String(weight)
-    );
-  }}
->
-  <Text style={styles.stepperValue}>
-    {weight.toFixed(1)}
-  </Text>
-
-  <Text style={styles.stepperUnit}>
-    tons
-  </Text>
-</TouchableOpacity>
+    style={styles.stepperCenter}
+    activeOpacity={0.8}
+    onPress={() => { setWeightInput(String(weight)); setWeightModalVisible(true); }}
+  >
+    <Text style={styles.stepperValue}>{weight.toFixed(1)}</Text>
+    <Text style={styles.stepperUnit}>tons</Text>
+  </TouchableOpacity>
   <TouchableOpacity
     style={styles.stepperBtn}
     onPress={() => setWeight(w => parseFloat((w + 0.5).toFixed(1)))}
@@ -488,6 +669,38 @@ return (
     <Text style={styles.stepperBtnText}>+</Text>
   </TouchableOpacity>
 </View>
+
+{/* Weight quick-entry modal */}
+<Modal visible={weightModalVisible} transparent animationType="fade" onRequestClose={() => setWeightModalVisible(false)}>
+  <TouchableOpacity style={wmStyles.backdrop} activeOpacity={1} onPress={() => setWeightModalVisible(false)}>
+    <TouchableOpacity style={wmStyles.sheet} activeOpacity={1}>
+      <Text style={wmStyles.title}>Enter Weight</Text>
+      <TextInput
+        style={wmStyles.input}
+        value={weightInput}
+        onChangeText={setWeightInput}
+        keyboardType="decimal-pad"
+        autoFocus
+        placeholder="e.g. 15"
+        placeholderTextColor={COLORS.textSubtle}
+      />
+      <View style={wmStyles.presets}>
+        {[1,2,5,10,15,20,25].map(n => (
+          <TouchableOpacity key={n} style={wmStyles.preset} onPress={() => setWeightInput(String(n))}>
+            <Text style={wmStyles.presetText}>{n}T</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      <TouchableOpacity style={wmStyles.btn} onPress={() => {
+        const n = parseFloat(weightInput);
+        if (!isNaN(n) && n > 0) setWeight(parseFloat(n.toFixed(1)));
+        setWeightModalVisible(false);
+      }}>
+        <Text style={wmStyles.btnText}>Set Weight</Text>
+      </TouchableOpacity>
+    </TouchableOpacity>
+  </TouchableOpacity>
+</Modal>
 
 
 		  
@@ -595,9 +808,6 @@ function PincodeHint({ info, pin, testID }: any) {
   if (!info.valid) return <Text style={[styles.hintMuted, { color: COLORS.danger }]} testID={testID}>Pincode not found</Text>;
   return <Text style={styles.hintOk} testID={testID}><Ionicons name="checkmark-circle" size={12} color={COLORS.success} /> {info.city}, {info.state}</Text>;
 }
-
-type CitySuggestion = { name: string; city: string; state: string; pincode: string };
-type RouteInfo = { city: string; state: string; valid: boolean } | null;
 
 function VoiceListenOverlay({ visible, onCancel, status }: { visible: boolean; onCancel: () => void; status: string }) {
   const pulse = useRef(new Animated.Value(0)).current;
@@ -894,6 +1104,19 @@ const mapped: CitySuggestion[] = allLocations
   );
 }
 
+// Styles for weight modal
+const wmStyles = StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", alignItems: "center", justifyContent: "center", padding: 32 },
+  sheet: { backgroundColor: COLORS.surface, borderRadius: 20, padding: 24, width: "100%", maxWidth: 360 },
+  title: { fontSize: 18, fontWeight: "700", color: COLORS.text, marginBottom: 14, textAlign: "center" },
+  input: { backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, padding: 14, fontSize: 22, fontWeight: "700", color: COLORS.text, textAlign: "center", marginBottom: 16 },
+  presets: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "center", marginBottom: 18 },
+  preset: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 100, backgroundColor: "#EEF2FA", borderWidth: 1, borderColor: COLORS.border },
+  presetText: { fontSize: 14, fontWeight: "700", color: COLORS.primary },
+  btn: { backgroundColor: COLORS.primary, paddingVertical: 14, borderRadius: 12, alignItems: "center" },
+  btnText: { color: COLORS.surface, fontSize: 16, fontWeight: "700" },
+});
+
 // Styles for RouteSearchModal
 const srm = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 10, backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border, gap: 8 },
@@ -987,90 +1210,6 @@ const sriStyles = StyleSheet.create({
   placeholderText: { fontSize: 14, color: COLORS.textSubtle },
   clearBtn: { position: "absolute", top: 10, right: 10 },
 });
-// ============== SmartLocationInput (FindSpaceModal - uses Mappls /places endpoint) ==============
-function SmartLocationInput({ label, testIDPrefix, value, onResolve, error, onError }: {
-  label: string; testIDPrefix: string; value: string;
-  onResolve: (pincode: string) => void; error: string; onError: (e: string) => void;
-}) {
-  const [text, setText] = useState(value);
-  const [suggestions, setSuggestions] = useState<MapplsSuggestion[]>([]);
-  const [searching, setSearching] = useState(false);
-  const timerRef = useRef<any>(null);
-  const isPincodeMode = text.length === 0 || /^\d/.test(text);
-
-  useEffect(() => { setText(value); }, [value]);
-
-  const handleChange = (t: string) => {
-    onError("");
-    if (/^\d/.test(t) || t.length === 0) {
-      const cleaned = t.replace(/\D/g, "").slice(0, 6);
-      setText(cleaned);
-      setSuggestions([]);
-      if (cleaned.length === 6) onResolve(cleaned);
-    } else {
-      setText(t);
-      clearTimeout(timerRef.current);
-      if (t.trim().length < 3) { setSuggestions([]); return; }
-      timerRef.current = setTimeout(async () => {
-        setSearching(true);
-        try {
-          const res = await fetch(`${API}/places?query=${encodeURIComponent(t.trim())}`);
-          const data = await res.json();
-          setSuggestions((data.suggestedLocations || []).slice(0, 6));
-        } catch { setSuggestions([]); }
-        finally { setSearching(false); }
-      }, 350);
-    }
-  };
-
-  const pickSuggestion = (s: MapplsSuggestion) => {
-    const pincode = extractPincode(s.placeAddress);
-    setText(s.placeName);
-    setSuggestions([]);
-    if (pincode) {
-      onResolve(pincode);
-    } else {
-      onError(`No pincode found for "${s.placeName}". Try a more specific address or enter pincode directly.`);
-    }
-  };
-
-  return (
-    <View style={styles.fieldWrap}>
-      <Text style={styles.label}>{label}</Text>
-      <TextInput
-        testID={`${testIDPrefix}-input`}
-        style={[styles.input, error ? styles.inputError : null]}
-        placeholder="Pincode (e.g. 400069) or address"
-        placeholderTextColor={COLORS.textSubtle}
-        value={text}
-        onChangeText={handleChange}
-        keyboardType={isPincodeMode ? "number-pad" : "default"}
-        autoCapitalize="words"
-        autoCorrect={false}
-        maxLength={isPincodeMode ? 6 : 80}
-      />
-      {error ? <Text style={styles.errorText}>{error}</Text> : null}
-      {searching ? <Text style={styles.hintMuted}>Searching…</Text> : null}
-      {suggestions.length > 0 ? (
-        <View style={styles.suggestList} testID={`${testIDPrefix}-suggest-list`}>
-          {suggestions.map((s, i) => {
-            const pincode = extractPincode(s.placeAddress);
-            return (
-              <TouchableOpacity key={`${s.eLoc}-${i}`} testID={`${testIDPrefix}-suggest-${i}`} style={[styles.suggestRow, i === suggestions.length - 1 && { borderBottomWidth: 0 }]} onPress={() => pickSuggestion(s)} activeOpacity={0.7}>
-                <View style={styles.flex1}>
-                  <Text style={styles.suggestName} numberOfLines={1}>{s.placeName}</Text>
-                  <Text style={styles.suggestSub} numberOfLines={1}>{s.placeAddress}</Text>
-                </View>
-                {pincode ? <Text style={styles.suggestPin}>{pincode}</Text> : null}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
 // ============== Load Market ==============
 const geoCache = new Map<string, { lat: number; lon: number; found: boolean }>();
 
@@ -1287,41 +1426,42 @@ function Spec({ icon, label, value }: any) {
   );
 }
 
-// ============== FindSpaceModal with Mappls Autosuggest ==============
+// ============== FindSpaceModal with RouteSearchModal autosuggest ==============
 function FindSpaceModal({ visible, initial, onClose, onApply }: {
   visible: boolean; initial: ActiveFilter | null; onClose: () => void; onApply: (f: ActiveFilter) => Promise<void>;
 }) {
+  const [originText, setOriginText] = useState("");
   const [originPin, setOriginPin] = useState("");
+  const [originInfo, setOriginInfo] = useState<RouteInfo>(null);
+  const [destText, setDestText] = useState("");
   const [destPin, setDestPin] = useState("");
+  const [destInfo, setDestInfo] = useState<RouteInfo>(null);
   const [weightKg, setWeightKg] = useState("");
-  const [volumeCuft, setVolumeCuft] = useState("");
   const [originErr, setOriginErr] = useState("");
   const [destErr, setDestErr] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (visible) {
-      setOriginPin(initial?.origin || ""); setDestPin(initial?.dest || "");
+      setOriginPin(initial?.origin || ""); setOriginText(initial?.origin || ""); setOriginInfo(null);
+      setDestPin(initial?.dest || ""); setDestText(initial?.dest || ""); setDestInfo(null);
       setWeightKg(initial?.weightKg ? String(initial.weightKg) : "");
-      setVolumeCuft(initial?.volumeCuft ? String(initial.volumeCuft) : "");
       setOriginErr(""); setDestErr("");
     }
   }, [visible, initial]);
 
   const submit = async () => {
     setOriginErr(""); setDestErr("");
-    if (!/^\d{6}$/.test(originPin)) { setOriginErr("Please select a valid origin from the list or enter a 6-digit pincode"); return; }
-    if (!/^\d{6}$/.test(destPin)) { setDestErr("Please select a valid destination from the list or enter a 6-digit pincode"); return; }
+    if (!/^\d{6}$/.test(originPin)) { setOriginErr("Select a valid origin from the list or enter a 6-digit pincode"); return; }
+    if (!/^\d{6}$/.test(destPin)) { setDestErr("Select a valid destination from the list or enter a 6-digit pincode"); return; }
     const w = parseFloat(weightKg);
-    const v = volumeCuft.trim() === "" ? null : parseFloat(volumeCuft);
     if (!w || w <= 0) return Alert.alert("Required", "Enter cargo weight in kg");
-    if (v !== null && (isNaN(v) || v <= 0)) return Alert.alert("Invalid", "Enter valid volume in cu ft (or leave it blank)");
     setBusy(true);
     try {
       const [oc, dc] = await Promise.all([geocodePin(originPin), geocodePin(destPin)]);
       if (!oc.found) { setOriginErr("Pincode not found, please check and try again."); return; }
       if (!dc.found) { setDestErr("Pincode not found, please check and try again."); return; }
-      await onApply({ origin: originPin, dest: destPin, weightKg: w, volumeCuft: v, originCoord: { lat: oc.lat, lon: oc.lon }, destCoord: { lat: dc.lat, lon: dc.lon } });
+      await onApply({ origin: originPin, dest: destPin, weightKg: w, volumeCuft: null, originCoord: { lat: oc.lat, lon: oc.lon }, destCoord: { lat: dc.lat, lon: dc.lon } });
     } finally { setBusy(false); }
   };
 
@@ -1334,37 +1474,34 @@ function FindSpaceModal({ visible, initial, onClose, onApply }: {
             <Text style={styles.modalTitle}>Find Space</Text>
             <Text style={styles.modalSubtitle}>Enter your cargo details to find matching trucks within 30 km of your route.</Text>
 
-            <SmartLocationInput
-              label="My Origin — Pincode or Address"
-              testIDPrefix="fs-origin"
-              value={originPin}
-              onResolve={(pin) => { setOriginPin(pin); setOriginErr(""); }}
-              error={originErr}
-              onError={setOriginErr}
-            />
-
-            <SmartLocationInput
-              label="My Destination — Pincode or Address"
-              testIDPrefix="fs-dest"
-              value={destPin}
-              onResolve={(pin) => { setDestPin(pin); setDestErr(""); }}
-              error={destErr}
-              onError={setDestErr}
-            />
-
-            <View style={styles.row}>
-              <View style={styles.flex1}>
-                <Field label="Weight (kg)">
-                  <TextInput testID="fs-weight-input" style={styles.input} placeholder="e.g., 800" placeholderTextColor={COLORS.textSubtle} value={weightKg} onChangeText={setWeightKg} keyboardType="decimal-pad" />
-                </Field>
+            <SectionTitle icon="navigate-outline" title="Route" />
+            <View style={styles.routeInputsRow}>
+              <SmartRouteInput
+                label="My Origin"
+                testIDPrefix="fs-origin"
+                text={originText}
+                pin={originPin}
+                info={originInfo}
+                onChange={(t, p, i) => { setOriginText(t); setOriginPin(p); setOriginInfo(i); setOriginErr(""); }}
+              />
+              <View style={styles.routeArrowMid}>
+                <Ionicons name="arrow-forward" size={20} color={COLORS.secondary} />
               </View>
-              <View style={{ width: 12 }} />
-              <View style={styles.flex1}>
-                <Field label="Volume (cu ft) — optional">
-                  <TextInput testID="fs-volume-input" style={styles.input} placeholder="Optional" placeholderTextColor={COLORS.textSubtle} value={volumeCuft} onChangeText={setVolumeCuft} keyboardType="decimal-pad" />
-                </Field>
-              </View>
+              <SmartRouteInput
+                label="My Destination"
+                testIDPrefix="fs-dest"
+                text={destText}
+                pin={destPin}
+                info={destInfo}
+                onChange={(t, p, i) => { setDestText(t); setDestPin(p); setDestInfo(i); setDestErr(""); }}
+              />
             </View>
+            {originErr ? <Text style={[styles.errorText, { marginTop: -8, marginBottom: 8 }]}>{originErr}</Text> : null}
+            {destErr ? <Text style={[styles.errorText, { marginTop: -8, marginBottom: 8 }]}>{destErr}</Text> : null}
+
+            <Field label="Cargo Weight (kg)">
+              <TextInput testID="fs-weight-input" style={styles.input} placeholder="e.g., 800" placeholderTextColor={COLORS.textSubtle} value={weightKg} onChangeText={setWeightKg} keyboardType="decimal-pad" />
+            </Field>
 
             <View style={styles.row}>
               <TouchableOpacity testID="fs-cancel-btn" style={[styles.outlineBtn, styles.flex1]} onPress={onClose} disabled={busy}>
@@ -1608,7 +1745,8 @@ routeBoxLabel: {
 },
 routeArrowMid: {
   paddingHorizontal: 4,
-  paddingTop: 80,
+  alignSelf: "center",
+  paddingBottom: 0,
 },
 stepperRow: {
   flexDirection: "row",
