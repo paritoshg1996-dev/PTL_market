@@ -56,9 +56,11 @@ type Profile = { name: string; phone: string; company: string };
 type Load = {
   id: string;
   origin_pincode: string;
+  origin_locality: string;
   origin_city: string;
   origin_state: string;
   destination_pincode: string;
+  destination_locality: string;
   destination_city: string;
   destination_state: string;
   cargo_types: string[];
@@ -213,17 +215,17 @@ function ProfileSetup({ onSave }: { onSave: (p: Profile) => void }) {
 }
 
 // ============== Shared types ==============
-type CitySuggestion = { name: string; city: string; state: string; pincode: string };
-type RouteInfo = { city: string; state: string; valid: boolean } | null;
+type CitySuggestion = { name: string; city: string; locality: string; state: string; pincode: string };
+type RouteInfo = { city: string; locality: string; state: string; valid: boolean } | null;
 
 // ============== EditLoadModal ==============
 function EditLoadModal({ load, visible, onClose, onSaved }: { load: Load; visible: boolean; onClose: () => void; onSaved: () => void }) {
-  const [originText, setOriginText] = useState(load.origin_city || load.origin_pincode);
+  const [originText, setOriginText] = useState(load.origin_locality || load.origin_city || load.origin_pincode);
   const [originPin, setOriginPin] = useState(load.origin_pincode);
-  const [originInfo, setOriginInfo] = useState<RouteInfo>({ city: load.origin_city, state: load.origin_state, valid: true });
-  const [destText, setDestText] = useState(load.destination_city || load.destination_pincode);
+  const [originInfo, setOriginInfo] = useState<RouteInfo>({ city: load.origin_city, locality: load.origin_locality || "", state: load.origin_state, valid: true });
+  const [destText, setDestText] = useState(load.destination_locality || load.destination_city || load.destination_pincode);
   const [destPin, setDestPin] = useState(load.destination_pincode);
-  const [destInfo, setDestInfo] = useState<RouteInfo>({ city: load.destination_city, state: load.destination_state, valid: true });
+  const [destInfo, setDestInfo] = useState<RouteInfo>({ city: load.destination_city, locality: load.destination_locality || "", state: load.destination_state, valid: true });
   const [weight, setWeight] = useState(load.weight_tons || 1);
   const [placement, setPlacement] = useState(load.cargo_placement || "Stackable");
   const [truckType, setTruckType] = useState(load.truck_type || "");
@@ -248,8 +250,8 @@ function EditLoadModal({ load, visible, onClose, onSaved }: { load: Load; visibl
     setBusy(true);
     try {
       const payload = {
-        origin_pincode: originPin, origin_city: originInfo?.city || "", origin_state: originInfo?.state || "",
-        destination_pincode: destPin, destination_city: destInfo?.city || "", destination_state: destInfo?.state || "",
+        origin_pincode: originPin, origin_locality: originInfo?.locality || "", origin_city: originInfo?.city || "", origin_state: originInfo?.state || "",
+        destination_pincode: destPin, destination_locality: destInfo?.locality || "", destination_city: destInfo?.city || "", destination_state: destInfo?.state || "",
         cargo_placement: placement, truck_type: truckType, weight_tons: weight, space_cuft: null,
         loading_date: date.toISOString().slice(0, 10),
       };
@@ -493,10 +495,10 @@ const profileStyles = StyleSheet.create({
 function PostLoadScreen({ profile, onPosted }: { profile: Profile; onPosted: () => void }) {
   const [originText, setOriginText] = useState("");
   const [originPin, setOriginPin] = useState("");
-  const [originInfo, setOriginInfo] = useState<{ city: string; state: string; valid: boolean } | null>(null);
+  const [originInfo, setOriginInfo] = useState<RouteInfo>(null);
   const [destText, setDestText] = useState("");
   const [destPin, setDestPin] = useState("");
-  const [destInfo, setDestInfo] = useState<{ city: string; state: string; valid: boolean } | null>(null);
+  const [destInfo, setDestInfo] = useState<RouteInfo>(null);
   const [images, setImages] = useState<string[]>([]);
   const [placement, setPlacement] = useState<string>("Stackable");
   const [truckType, setTruckType] = useState<string>("");
@@ -542,8 +544,8 @@ if (!w || w <= 0) return Alert.alert("Invalid", "Enter valid weight in tons");
     setLoadingPost(true);
     try {
       const payload = {
-        origin_pincode: originPin, origin_city: originInfo?.city || "", origin_state: originInfo?.state || "",
-        destination_pincode: destPin, destination_city: destInfo?.city || "", destination_state: destInfo?.state || "",
+        origin_pincode: originPin, origin_locality: originInfo?.locality || "", origin_city: originInfo?.city || "", origin_state: originInfo?.state || "",
+        destination_pincode: destPin, destination_locality: destInfo?.locality || "", destination_city: destInfo?.city || "", destination_state: destInfo?.state || "",
         cargo_types: [], cargo_placement: placement, truck_type: truckType, weight_tons: w, space_cuft: null,
         loading_date: date.toISOString().slice(0, 10), poster_name: profile.name, poster_phone: profile.phone,
         poster_company: profile.company, images,
@@ -560,11 +562,14 @@ if (!w || w <= 0) return Alert.alert("Invalid", "Enter valid weight in tons");
 
       if (alsoShare) {
         const dateStr = date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-        const originLine = originInfo?.city ? `${originPin} (${originInfo.city}, ${originInfo.state})` : originPin;
-        const destLine = destInfo?.city ? `${destPin} (${destInfo.city}, ${destInfo.state})` : destPin;
+        const oLocality = originInfo?.locality || originInfo?.city || "";
+        const dLocality = destInfo?.locality || destInfo?.city || "";
+        const originLine = `📍 ${originPin}${oLocality ? `, ${oLocality}` : ""}${originInfo?.state ? `, ${originInfo.state}` : ""}`;
+        const destLine   = `📍 ${destPin}${dLocality ? `, ${dLocality}` : ""}${destInfo?.state ? `, ${destInfo.state}` : ""}`;
+        const loadLink = created?.id ? `\n\n🔗 More details: https://www.trucktraffic.in/load/${created.id}` : `\n\n🔗 https://www.trucktraffic.in`;
         let imageLines = "";
         if (images.length > 0 && created?.id) {
-          const longUrls = images.map((_, i) => `${process.env.EXPO_PUBLIC_BACKEND_URL}/api/loads/${created.id}/image/${i}`);
+          const longUrls = images.map((_, i) => `${API}/loads/${created.id}/image/${i}`);
           const shortened = await Promise.all(longUrls.map(async (u) => {
             try {
               const r = await fetch(`${API}/shorten`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: u }) });
@@ -573,9 +578,17 @@ if (!w || w <= 0) return Alert.alert("Invalid", "Enter valid weight in tons");
           }));
           imageLines = `\n📸 *Photos:*\n` + shortened.join("\n");
         }
-        const text = `🚛 *Truck Space Available – LoadLink*\n\n📍 *Route:* ${originLine} ➡️ ${destLine}\n🚚 *Truck:* ${truckType}\n⚖️ *Weight:* ${w} Tons\n` +
-          `📅 *Loading:* ${dateStr}\n🧱 *Placement:* ${placement}\n${imageLines}\n\n📞 *Contact:* ${profile.name}` +
-          (profile.company ? ` — ${profile.company}` : "") + `\n+91 ${profile.phone}`;
+        const text = `🚛 *Truck Space Available – LoadLink*\n\n` +
+          `🗺️ *Route:*\n${originLine}\n   ⬇️\n${destLine}\n\n` +
+          `🚚 *Truck:* ${truckType}\n` +
+          `⚖️ *Weight:* ${w} Tons\n` +
+          `📅 *Loading:* ${dateStr}\n` +
+          `🧱 *Placement:* ${placement}` +
+          `${imageLines}` +
+          `\n\n📞 *Contact:* ${profile.name}` +
+          (profile.company ? ` — ${profile.company}` : "") +
+          `\n+91 ${profile.phone}` +
+          loadLink;
         try { await Linking.openURL(`https://wa.me/?text=${encodeURIComponent(text)}`); } catch {
           Alert.alert("Posted", "Load posted, but WhatsApp could not be opened.");
         }
@@ -924,7 +937,10 @@ const mapped: CitySuggestion[] = allLocations
   .map((s: any) => {
     const parts = (s.placeAddress || "").split(",").map((p: string) => p.trim()).filter(Boolean);
     const state = parts.length >= 1 ? parts[parts.length - 1] : "";
+    // city is the second-to-last comma-separated segment
     const city = parts.length >= 2 ? parts[parts.length - 2] : parts[0] || "";
+    // locality is the place's own name (what Mappls returns as placeName — e.g. "Turbhe")
+    const locality = s.placeName || "";
 
     // Try to get pincode from address first, then fall back to name-index
     const directMatch = (s.placeAddress || "").match(/\b(\d{6})\b/);
@@ -934,7 +950,8 @@ const mapped: CitySuggestion[] = allLocations
 
     return {
       name: s.placeName,
-      city: s.placeAddress || "",
+      city,
+      locality,
       state,
       pincode,
     };
@@ -962,7 +979,7 @@ const mapped: CitySuggestion[] = allLocations
         const r = await fetch(`${API}/pincode/${query}`);
         const j = await r.json();
         if (!cancelled && j.valid) {
-          const s: CitySuggestion = { name: j.city || query, city: j.city || "", state: j.state || "", pincode: query };
+          const s: CitySuggestion = { name: j.locality || j.city || query, city: j.city || "", locality: j.locality || j.city || "", state: j.state || "", pincode: query };
           setResults([s]);
         } else if (!cancelled) setResults([]);
       } catch { if (!cancelled) setResults([]); }
@@ -981,7 +998,7 @@ const mapped: CitySuggestion[] = allLocations
 
   const pick = async (s: CitySuggestion) => {
     await saveRecentSearch(testIDPrefix, s);
-    onSelect(s.name, s.pincode, { city: s.city, state: s.state, valid: true });
+    onSelect(s.name, s.pincode, { city: s.city, locality: s.locality || s.name, state: s.state, valid: true });
     onClose();
   };
 
@@ -1344,69 +1361,113 @@ function LoadCard({ load, isMine, distance }: { load: Load; isMine: boolean; dis
   const callPoster = () => Linking.openURL(`tel:${load.poster_phone}`).catch(() => Alert.alert("Error", "Cannot open dialer"));
   const dateStr = useMemo(() => { try { return new Date(load.loading_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }); } catch { return load.loading_date; } }, [load.loading_date]);
 
+  // Format route location: "400703 · Turbhe · Maharashtra"
+  const formatLocation = (pincode: string, locality: string, state: string) => {
+    const parts = [pincode, locality, state].filter(Boolean);
+    return parts.join(" · ");
+  };
+
+  const oLabel = formatLocation(load.origin_pincode, load.origin_locality || load.origin_city, load.origin_state);
+  const dLabel = formatLocation(load.destination_pincode, load.destination_locality || load.destination_city, load.destination_state);
+
+  // Fix: use API constant (not process.env) for image URLs
+  const getImageUri = (i: number) => `${API}/loads/${load.id}/image/${i}`;
+
+  const imageCount = load.image_count || 0;
+  const hasInlineImages = load.images && load.images.length > 0;
+  const hasRemoteImages = !hasInlineImages && imageCount > 0;
+
   return (
     <View style={styles.card} testID={`load-card-${load.id}`}>
+      {/* ── LINE 1: Route ── */}
       <View style={styles.cardRouteRow}>
         <View style={styles.flex1}>
-          <Text style={styles.routePin}>{load.origin_pincode}</Text>
-          <Text style={styles.routeCity} numberOfLines={1}>{load.origin_city || "—"}</Text>
-          <Text style={styles.routeState} numberOfLines={1}>{load.origin_state}</Text>
-        </View>
-        <View style={styles.routeArrow}><Ionicons name="arrow-forward" size={20} color={COLORS.secondary} /><View style={styles.routeLine} /></View>
-        <View style={[styles.flex1, { alignItems: "flex-end" }]}>
-          <Text style={styles.routePin}>{load.destination_pincode}</Text>
-          <Text style={styles.routeCity} numberOfLines={1}>{load.destination_city || "—"}</Text>
-          <Text style={styles.routeState} numberOfLines={1}>{load.destination_state}</Text>
+          <View style={cardStyles.routeEndpoint}>
+            <Ionicons name="location" size={13} color={COLORS.secondary} style={{ marginTop: 2 }} />
+            <Text style={cardStyles.routeLabel} numberOfLines={1}>{oLabel}</Text>
+          </View>
+          <View style={[cardStyles.routeEndpoint, { marginTop: 6 }]}>
+            <Ionicons name="flag" size={13} color={COLORS.primary} style={{ marginTop: 2 }} />
+            <Text style={cardStyles.routeLabel} numberOfLines={1}>{dLabel}</Text>
+          </View>
         </View>
       </View>
-      <View style={styles.divider} />
-      <View style={styles.specsRow}>
-        <Spec icon="barbell-outline" label="Weight" value={`${load.weight_tons} T`} />
-        <Spec icon="cube-outline" label="Space" value={load.space_cuft != null ? `${load.space_cuft} ft³` : "—"} />
-        <Spec icon="calendar-outline" label="Loading" value={dateStr} />
-      </View>
+
       {distance ? (
         <View style={styles.distanceRow} testID={`distance-${load.id}`}>
           <View style={styles.distanceChip}><Ionicons name="location-outline" size={12} color={COLORS.success} /><Text style={styles.distanceText}>Origin: {distance.origin.toFixed(1)} km {distance.offRoute ? "off-route" : "away"}</Text></View>
-          <View style={styles.distanceChip}><Ionicons name="flag-outline" size={12} color={COLORS.success} /><Text style={styles.distanceText}>Destination: {distance.dest.toFixed(1)} km {distance.offRoute ? "off-route" : "away"}</Text></View>
+          <View style={styles.distanceChip}><Ionicons name="flag-outline" size={12} color={COLORS.success} /><Text style={styles.distanceText}>Dest: {distance.dest.toFixed(1)} km {distance.offRoute ? "off-route" : "away"}</Text></View>
         </View>
       ) : null}
-      <View style={styles.cargoChipsRow}>
+
+      <View style={styles.divider} />
+
+      {/* ── LINE 2: Weight · Date · Truck · Placement in one row ── */}
+      <View style={cardStyles.metaRow}>
+        <View style={cardStyles.metaChip}>
+          <Ionicons name="barbell-outline" size={12} color={COLORS.textMuted} />
+          <Text style={cardStyles.metaText}>{load.weight_tons} T</Text>
+        </View>
+        <Text style={cardStyles.metaSep}>·</Text>
+        <View style={cardStyles.metaChip}>
+          <Ionicons name="calendar-outline" size={12} color={COLORS.textMuted} />
+          <Text style={cardStyles.metaText}>{dateStr}</Text>
+        </View>
+        <Text style={cardStyles.metaSep}>·</Text>
         {load.truck_type ? (
-          <View style={[styles.miniChip, styles.truckChip]}>
-            {(() => { const img = TRUCK_TYPES.find((t) => t.name === load.truck_type)?.image; return img ? <Image source={img} style={{ width: 22, height: 12, marginRight: 4 }} tintColor={COLORS.surface} resizeMode="contain" /> : null; })()}
-            <Text style={[styles.miniChipText, { color: COLORS.surface }]}>{load.truck_type}</Text>
+          <View style={[cardStyles.metaChip, cardStyles.truckMeta]}>
+            <Text style={[cardStyles.metaText, { color: COLORS.surface }]}>{load.truck_type}</Text>
           </View>
         ) : null}
-        {load.cargo_placement ? <View style={[styles.miniChip, { backgroundColor: "#FFF4EE" }]}><Text style={[styles.miniChipText, { color: COLORS.secondary }]}>{load.cargo_placement}</Text></View> : null}
+        {load.cargo_placement ? (
+          <>
+            <Text style={cardStyles.metaSep}>·</Text>
+            <View style={[cardStyles.metaChip, cardStyles.placementMeta]}>
+              <Text style={[cardStyles.metaText, { color: COLORS.secondary }]}>{load.cargo_placement}</Text>
+            </View>
+          </>
+        ) : null}
       </View>
-      {load.images && load.images.length > 0 ? (
-        <View style={styles.cardPhotosRow} testID={`card-photos-${load.id}`}>
-          {load.images.slice(0, 3).map((src, i) => <Image key={i} source={{ uri: src }} style={styles.cardPhoto} resizeMode="cover" />)}
-        </View>
-      ) : (load.image_count || 0) > 0 ? (
-        showImages ? (
-          <View style={styles.cardPhotosRow} testID={`card-photos-${load.id}`}>
-            {Array.from({ length: load.image_count || 0 }).slice(0, 3).map((_, i) => (
-              <Image key={i} source={{ uri: `${process.env.EXPO_PUBLIC_BACKEND_URL}/api/loads/${load.id}/image/${i}` }} style={styles.cardPhoto} resizeMode="cover" />
-            ))}
-          </View>
-        ) : (
-          <TouchableOpacity testID={`show-images-btn-${load.id}`} onPress={() => setShowImages(true)} style={styles.showImagesBtn}>
-            <Ionicons name="images-outline" size={16} color={COLORS.primary} />
-            <Text style={styles.showImagesBtnText}>Show {load.image_count} {load.image_count === 1 ? "photo" : "photos"}</Text>
-          </TouchableOpacity>
-        )
-      ) : null}
+
       <View style={styles.divider} />
-      <View style={styles.posterRow}>
-        <View style={styles.flex1}>
-          <Text style={styles.posterName}>{load.poster_name}{isMine && <Text style={styles.youTag}>  • You</Text>}</Text>
-          {load.poster_company ? <Text style={styles.posterCompany}>{load.poster_company}</Text> : null}
+
+      {/* ── LINE 3: Images + Contact ── */}
+      <View style={cardStyles.line3Row}>
+        {/* Photos section */}
+        <View style={cardStyles.photosSection}>
+          {hasInlineImages ? (
+            load.images!.slice(0, 3).map((src, i) => (
+              <Image key={i} source={{ uri: src }} style={cardStyles.thumb} resizeMode="cover" />
+            ))
+          ) : hasRemoteImages ? (
+            showImages ? (
+              Array.from({ length: Math.min(imageCount, 3) }).map((_, i) => (
+                <Image key={i} source={{ uri: getImageUri(i) }} style={cardStyles.thumb} resizeMode="cover" />
+              ))
+            ) : (
+              <TouchableOpacity
+                testID={`show-images-btn-${load.id}`}
+                onPress={() => setShowImages(true)}
+                style={cardStyles.showImagesBtn}
+              >
+                <Ionicons name="images-outline" size={15} color={COLORS.primary} />
+                <Text style={cardStyles.showImagesBtnText}>{imageCount} photo{imageCount !== 1 ? "s" : ""}</Text>
+              </TouchableOpacity>
+            )
+          ) : (
+            <Text style={cardStyles.noPhotos}>No photos</Text>
+          )}
+        </View>
+
+        {/* Contact section */}
+        <View style={cardStyles.contactSection}>
+          <Text style={styles.posterName} numberOfLines={1}>{load.poster_name}{isMine && <Text style={styles.youTag}> · You</Text>}</Text>
+          {load.poster_company ? <Text style={styles.posterCompany} numberOfLines={1}>{load.poster_company}</Text> : null}
           <Text style={styles.posterPhone}>+91 {load.poster_phone}</Text>
         </View>
+
         {!isMine && (
-          <TouchableOpacity testID={`call-btn-${load.id}`} style={styles.callBtn} onPress={callPoster}>
+          <TouchableOpacity testID={`call-btn-${load.id}`} style={[styles.callBtn, { alignSelf: "center" }]} onPress={callPoster}>
             <Ionicons name="call" size={16} color={COLORS.surface} />
             <Text style={styles.callBtnText}>Call</Text>
           </TouchableOpacity>
@@ -1415,6 +1476,24 @@ function LoadCard({ load, isMine, distance }: { load: Load; isMine: boolean; dis
     </View>
   );
 }
+
+const cardStyles = StyleSheet.create({
+  routeEndpoint: { flexDirection: "row", alignItems: "flex-start", gap: 5 },
+  routeLabel: { flex: 1, fontSize: 13, fontWeight: "600", color: COLORS.text },
+  metaRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 4 },
+  metaChip: { flexDirection: "row", alignItems: "center", gap: 3 },
+  metaText: { fontSize: 12, color: COLORS.text, fontWeight: "600" },
+  metaSep: { fontSize: 12, color: COLORS.textSubtle },
+  truckMeta: { backgroundColor: COLORS.primary, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 100 },
+  placementMeta: { backgroundColor: "#FFF4EE", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 100 },
+  line3Row: { flexDirection: "row", alignItems: "center", gap: 10 },
+  photosSection: { flexDirection: "row", gap: 6, alignItems: "center" },
+  thumb: { width: 52, height: 52, borderRadius: 8, backgroundColor: COLORS.bg },
+  showImagesBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.bg },
+  showImagesBtnText: { color: COLORS.primary, fontWeight: "700", fontSize: 12 },
+  noPhotos: { fontSize: 11, color: COLORS.textSubtle, fontStyle: "italic" },
+  contactSection: { flex: 1 },
+});
 
 function Spec({ icon, label, value }: any) {
   return (
