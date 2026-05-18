@@ -820,7 +820,9 @@ if (!w || w <= 0) return Alert.alert("Invalid", "Enter valid weight in tons");
         const dLocality = destInfo?.locality || destInfo?.city || "";
         const originLine = `📍 ${originPin}${oLocality ? `, ${oLocality}` : ""}${originInfo?.state ? `, ${originInfo.state}` : ""}`;
         const destLine   = `📍 ${destPin}${dLocality ? `, ${dLocality}` : ""}${destInfo?.state ? `, ${destInfo.state}` : ""}`;
-        const loadLink = created?.id ? `\n\n🔗 More details: https://www.trucktraffic.in/load/${created.id}` : `\n\n🔗 https://www.trucktraffic.in`;
+        const loadLink = created?.id
+          ? `\n\n🔗 More details: https://www.trucktraffic.in?load=${created.id}`
+          : `\n\n🔗 https://www.trucktraffic.in`;
         let imageLines = "";
         if (images.length > 0 && created?.id) {
           const longUrls = images.map((_, i) => `${API}/loads/${created.id}/image/${i}`);
