@@ -1,4 +1,4 @@
-package com.paritosh96.frontend
+package com.ptlmarket.trucktraffic
 
 import android.app.Application
 import android.content.res.Configuration
