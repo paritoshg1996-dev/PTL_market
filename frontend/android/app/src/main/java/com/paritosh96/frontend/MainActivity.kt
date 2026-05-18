@@ -1,4 +1,4 @@
-package com.paritosh96.frontend
+package com.ptlmarket.trucktraffic
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build
