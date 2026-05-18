@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+import json
 import logging
 import base64
 from pathlib import Path
@@ -11,6 +12,9 @@ from typing import List, Optional
 import uuid
 from datetime import datetime, timezone
 import requests
+
+import firebase_admin
+from firebase_admin import credentials as fb_credentials, auth as fb_auth
 
 
 ROOT_DIR = Path(__file__).parent
@@ -29,6 +33,46 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+# ===== Firebase Admin init =====
+def _init_firebase_admin():
+    """Initialize Firebase Admin SDK.
+
+    Tries in this order:
+      1) FIREBASE_SERVICE_ACCOUNT_B64 env var (base64-encoded JSON) — recommended on Render
+      2) FIREBASE_SERVICE_ACCOUNT_JSON env var (raw JSON string)
+      3) Local file firebase-service-account.json next to server.py
+    """
+    if firebase_admin._apps:
+        return
+    cred = None
+    b64 = os.environ.get("FIREBASE_SERVICE_ACCOUNT_B64")
+    raw = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
+    try:
+        if b64:
+            data = json.loads(base64.b64decode(b64).decode("utf-8"))
+            cred = fb_credentials.Certificate(data)
+        elif raw:
+            data = json.loads(raw)
+            cred = fb_credentials.Certificate(data)
+        else:
+            file_path = ROOT_DIR / "firebase-service-account.json"
+            if file_path.exists():
+                cred = fb_credentials.Certificate(str(file_path))
+        if cred is not None:
+            firebase_admin.initialize_app(cred)
+            logger.info("Firebase Admin initialized.")
+        else:
+            logger.warning(
+                "Firebase service account not found. Set FIREBASE_SERVICE_ACCOUNT_B64 "
+                "or place firebase-service-account.json next to server.py."
+            )
+    except Exception as e:
+        logger.error(f"Firebase Admin init failed: {e}")
+
+
+_init_firebase_admin()
 
 # ===== Models =====
 class LoadCreate(BaseModel):
@@ -329,6 +373,64 @@ async def shorten_url(payload: ShortenRequest):
     except Exception as e:
         logger.warning(f"Shorten failed: {e}")
     return ShortenResponse(url=long_url, short=long_url)
+
+
+# ===== Firebase Phone Auth =====
+class VerifyTokenRequest(BaseModel):
+    id_token: str
+
+
+class VerifyTokenResponse(BaseModel):
+    uid: str
+    phone_number: str           # e.g. "+919876543210"
+    phone_local: str            # 10-digit local form, e.g. "9876543210"
+    verified_at: str
+
+
+@api_router.post("/auth/verify-token", response_model=VerifyTokenResponse)
+async def verify_firebase_token(payload: VerifyTokenRequest):
+    """Verify a Firebase ID token (obtained after phone OTP sign-in)
+    and return the verified phone number.
+    """
+    if not firebase_admin._apps:
+        raise HTTPException(
+            status_code=500,
+            detail="Firebase Admin not initialized on server",
+        )
+    token = (payload.id_token or "").strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="id_token is required")
+    try:
+        # check_revoked=False — we just need to confirm the OTP sign-in is valid
+        decoded = fb_auth.verify_id_token(token, check_revoked=False)
+    except fb_auth.ExpiredIdTokenError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except fb_auth.RevokedIdTokenError:
+        raise HTTPException(status_code=401, detail="Token revoked")
+    except fb_auth.InvalidIdTokenError as e:
+        logger.warning(f"Invalid Firebase id_token: {e}")
+        raise HTTPException(status_code=401, detail="Invalid token")
+    except Exception as e:
+        logger.error(f"Firebase verify_id_token error: {e}")
+        raise HTTPException(status_code=401, detail="Token verification failed")
+
+    phone = decoded.get("phone_number") or ""
+    uid = decoded.get("uid") or decoded.get("sub") or ""
+    if not phone:
+        raise HTTPException(
+            status_code=400,
+            detail="Token has no phone_number claim. Make sure the user signed in with phone.",
+        )
+    # Strip "+91" prefix to get the 10-digit local form used by the app/profile.
+    digits = "".join(ch for ch in phone if ch.isdigit())
+    phone_local = digits[-10:] if len(digits) >= 10 else digits
+
+    return VerifyTokenResponse(
+        uid=uid,
+        phone_number=phone,
+        phone_local=phone_local,
+        verified_at=datetime.now(timezone.utc).isoformat(),
+    )
 
 
 app.include_router(api_router)

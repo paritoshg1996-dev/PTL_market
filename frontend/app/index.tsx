@@ -27,6 +27,27 @@ import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from "expo-spe
 
 const API = `https://ptl-market.onrender.com/api`;
 
+// Phone-auth storage keys
+const PROFILE_KEY = "profile";
+const PHONE_VERIFIED_KEY = "phoneVerified";
+
+// Lazy-load @react-native-firebase/auth so the web preview (no native module)
+// doesn't crash on import. On Android APK build it loads normally.
+let firebaseAuth: any = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  firebaseAuth = require("@react-native-firebase/auth").default;
+} catch {
+  firebaseAuth = null;
+}
+
+type PhoneVerified = {
+  phone: string;       // 10-digit local form, e.g. "9876543210"
+  phoneFull: string;   // e.g. "+919876543210"
+  verifiedAt: string;  // ISO timestamp
+  uid: string;         // Firebase UID
+};
+
 const COLORS = {
   primary: "#0A2463",
   secondary: "#FF6B35",
@@ -92,23 +113,35 @@ function extractPincode(address: string): string {
 // ============== Root ==============
 export default function Index() {
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [phoneVerified, setPhoneVerified] = useState<PhoneVerified | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [tab, setTab] = useState<"post" | "market">("post");
   const [showProfile, setShowProfile] = useState(false);
 
   useEffect(() => {
     (async () => {
-      const raw = await AsyncStorage.getItem("profile");
-      if (raw) {
-        try { setProfile(JSON.parse(raw)); } catch {}
+      const [rawProfile, rawVerif] = await Promise.all([
+        AsyncStorage.getItem(PROFILE_KEY),
+        AsyncStorage.getItem(PHONE_VERIFIED_KEY),
+      ]);
+      if (rawProfile) {
+        try { setProfile(JSON.parse(rawProfile)); } catch {}
+      }
+      if (rawVerif) {
+        try { setPhoneVerified(JSON.parse(rawVerif)); } catch {}
       }
       setLoaded(true);
     })();
   }, []);
 
   const saveProfile = async (p: Profile) => {
-    await AsyncStorage.setItem("profile", JSON.stringify(p));
+    await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(p));
     setProfile(p);
+  };
+
+  const saveVerification = async (v: PhoneVerified) => {
+    await AsyncStorage.setItem(PHONE_VERIFIED_KEY, JSON.stringify(v));
+    setPhoneVerified(v);
   };
 
   if (!loaded) {
@@ -119,7 +152,15 @@ export default function Index() {
     );
   }
 
-  if (!profile) return <ProfileSetup onSave={saveProfile} />;
+  // Step 1: Phone OTP verification (must run first, before profile setup)
+  if (!phoneVerified) {
+    return <PhoneVerification onVerified={saveVerification} />;
+  }
+
+  // Step 2: Profile setup (phone auto-filled & locked from verification)
+  if (!profile) {
+    return <ProfileSetup onSave={saveProfile} lockedPhone={phoneVerified.phone} />;
+  }
 
   if (showProfile) {
     return (
@@ -174,10 +215,11 @@ function TabButton({ label, icon, active, onPress, testID }: any) {
 }
 
 // ============== Profile Setup ==============
-function ProfileSetup({ onSave }: { onSave: (p: Profile) => void }) {
+function ProfileSetup({ onSave, lockedPhone }: { onSave: (p: Profile) => void; lockedPhone?: string }) {
   const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
+  const [phone, setPhone] = useState(lockedPhone || "");
   const [company, setCompany] = useState("");
+  const phoneIsLocked = !!lockedPhone && /^\d{10}$/.test(lockedPhone);
 
   const submit = () => {
     if (name.trim().length < 2) return Alert.alert("Required", "Please enter your name");
@@ -198,8 +240,16 @@ function ProfileSetup({ onSave }: { onSave: (p: Profile) => void }) {
           <Field label="Your Name *">
             <TextInput testID="profile-name-input" style={styles.input} placeholder="e.g., Rajesh Kumar" placeholderTextColor={COLORS.textSubtle} value={name} onChangeText={setName} />
           </Field>
-          <Field label="Phone Number *">
-            <TextInput testID="profile-phone-input" style={styles.input} placeholder="10-digit mobile number" placeholderTextColor={COLORS.textSubtle} value={phone} onChangeText={(t) => setPhone(t.replace(/\D/g, "").slice(0, 10))} keyboardType="number-pad" maxLength={10} />
+          <Field label={phoneIsLocked ? "Phone Number ✓ Verified" : "Phone Number *"}>
+            {phoneIsLocked ? (
+              <View style={styles.lockedPhoneRow} testID="profile-phone-locked">
+                <Text style={styles.lockedPhonePrefix}>+91</Text>
+                <Text style={styles.lockedPhoneText}>{phone}</Text>
+                <Ionicons name="checkmark-circle" size={20} color={COLORS.success} style={{ marginLeft: "auto" }} />
+              </View>
+            ) : (
+              <TextInput testID="profile-phone-input" style={styles.input} placeholder="10-digit mobile number" placeholderTextColor={COLORS.textSubtle} value={phone} onChangeText={(t) => setPhone(t.replace(/\D/g, "").slice(0, 10))} keyboardType="number-pad" maxLength={10} />
+            )}
           </Field>
           <Field label="Company (Optional)">
             <TextInput testID="profile-company-input" style={styles.input} placeholder="Transport company name" placeholderTextColor={COLORS.textSubtle} value={company} onChangeText={setCompany} />
@@ -208,6 +258,210 @@ function ProfileSetup({ onSave }: { onSave: (p: Profile) => void }) {
             <Text style={styles.primaryBtnText}>Continue</Text>
             <Ionicons name="arrow-forward" size={20} color={COLORS.surface} />
           </TouchableOpacity>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+}
+
+// ============== Phone Verification (OTP) ==============
+function PhoneVerification({ onVerified }: { onVerified: (v: PhoneVerified) => void }) {
+  const [stage, setStage] = useState<"phone" | "otp">("phone");
+  const [phone, setPhone] = useState("");
+  const [otp, setOtp] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [confirmation, setConfirmation] = useState<any>(null);
+  const [resendTimer, setResendTimer] = useState(0);
+
+  // Resend countdown
+  useEffect(() => {
+    if (resendTimer <= 0) return;
+    const t = setTimeout(() => setResendTimer((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendTimer]);
+
+  const sendOtp = async () => {
+    if (!/^\d{10}$/.test(phone.trim())) {
+      return Alert.alert("Invalid number", "Enter a valid 10-digit Indian mobile number.");
+    }
+    if (!firebaseAuth) {
+      return Alert.alert(
+        "Native build required",
+        "Phone OTP verification requires the Android app build. The web preview cannot send SMS. Please install the APK on your phone to test.",
+      );
+    }
+    setBusy(true);
+    try {
+      const fullPhone = `+91${phone.trim()}`;
+      const conf = await firebaseAuth().signInWithPhoneNumber(fullPhone);
+      setConfirmation(conf);
+      setStage("otp");
+      setResendTimer(45);
+    } catch (e: any) {
+      console.warn("OTP send failed:", e);
+      const code = e?.code || "";
+      let msg = "Could not send OTP. Please check your number and try again.";
+      if (code === "auth/invalid-phone-number") msg = "The phone number is invalid.";
+      else if (code === "auth/too-many-requests") msg = "Too many requests. Please try again later.";
+      else if (code === "auth/network-request-failed") msg = "Network error. Please check your internet connection.";
+      else if (e?.message) msg = e.message;
+      Alert.alert("Failed to send OTP", msg);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const verifyOtp = async () => {
+    if (!/^\d{6}$/.test(otp.trim())) {
+      return Alert.alert("Invalid code", "Enter the 6-digit code sent to your phone.");
+    }
+    if (!confirmation) {
+      return Alert.alert("Session expired", "Please request a new OTP.");
+    }
+    setBusy(true);
+    try {
+      const userCred = await confirmation.confirm(otp.trim());
+      const idToken: string = await userCred.user.getIdToken();
+
+      // Verify on backend (also fetches the verified phone number)
+      const res = await fetch(`${API}/auth/verify-token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id_token: idToken }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j?.detail || `Server returned ${res.status}`);
+      }
+      const data = await res.json();
+      const verified: PhoneVerified = {
+        phone: data.phone_local || phone.trim(),
+        phoneFull: data.phone_number || `+91${phone.trim()}`,
+        verifiedAt: data.verified_at || new Date().toISOString(),
+        uid: data.uid || userCred.user.uid,
+      };
+      onVerified(verified);
+    } catch (e: any) {
+      console.warn("OTP verify failed:", e);
+      const code = e?.code || "";
+      let msg = "Could not verify the code. Please try again.";
+      if (code === "auth/invalid-verification-code") msg = "The OTP you entered is incorrect.";
+      else if (code === "auth/code-expired") msg = "OTP expired. Please request a new one.";
+      else if (e?.message) msg = e.message;
+      Alert.alert("Verification failed", msg);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const changeNumber = () => {
+    setStage("phone");
+    setOtp("");
+    setConfirmation(null);
+    setResendTimer(0);
+  };
+
+  return (
+    <SafeAreaView style={[styles.fill, { backgroundColor: COLORS.bg }]}>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.fill}>
+        <ScrollView contentContainerStyle={styles.profileWrap} keyboardShouldPersistTaps="handled">
+          <View style={styles.profileLogo}>
+            <Ionicons name={stage === "phone" ? "phone-portrait" : "shield-checkmark"} size={36} color={COLORS.surface} />
+          </View>
+          <Text style={styles.profileTitle}>
+            {stage === "phone" ? "Verify your phone" : "Enter OTP"}
+          </Text>
+          <Text style={styles.profileSubtitle}>
+            {stage === "phone"
+              ? "We will send you a one-time SMS code to verify your mobile number."
+              : `Enter the 6-digit code sent to +91 ${phone}`}
+          </Text>
+          <View style={{ height: 24 }} />
+
+          {stage === "phone" ? (
+            <>
+              <Field label="Mobile Number">
+                <View style={styles.phoneInputRow} testID="otp-phone-row">
+                  <View style={styles.phonePrefix}>
+                    <Text style={styles.phonePrefixText}>+91</Text>
+                  </View>
+                  <TextInput
+                    testID="otp-phone-input"
+                    style={styles.phoneInput}
+                    placeholder="10-digit number"
+                    placeholderTextColor={COLORS.textSubtle}
+                    value={phone}
+                    onChangeText={(t) => setPhone(t.replace(/\D/g, "").slice(0, 10))}
+                    keyboardType="number-pad"
+                    maxLength={10}
+                    autoFocus
+                  />
+                </View>
+              </Field>
+              <TouchableOpacity
+                testID="otp-send-btn"
+                style={[styles.primaryBtn, busy && { opacity: 0.7 }]}
+                onPress={sendOtp}
+                disabled={busy}
+              >
+                {busy ? (
+                  <ActivityIndicator color={COLORS.surface} />
+                ) : (
+                  <>
+                    <Text style={styles.primaryBtnText}>Send OTP</Text>
+                    <Ionicons name="arrow-forward" size={20} color={COLORS.surface} />
+                  </>
+                )}
+              </TouchableOpacity>
+              <Text style={styles.otpHint}>
+                By continuing you agree to receive an SMS for verification.
+              </Text>
+            </>
+          ) : (
+            <>
+              <Field label="6-digit Code">
+                <TextInput
+                  testID="otp-code-input"
+                  style={[styles.input, styles.otpCodeInput]}
+                  placeholder="••••••"
+                  placeholderTextColor={COLORS.textSubtle}
+                  value={otp}
+                  onChangeText={(t) => setOtp(t.replace(/\D/g, "").slice(0, 6))}
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  autoFocus
+                />
+              </Field>
+              <TouchableOpacity
+                testID="otp-verify-btn"
+                style={[styles.primaryBtn, busy && { opacity: 0.7 }]}
+                onPress={verifyOtp}
+                disabled={busy}
+              >
+                {busy ? (
+                  <ActivityIndicator color={COLORS.surface} />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark-circle" size={20} color={COLORS.surface} />
+                    <Text style={styles.primaryBtnText}>Verify & Continue</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              <View style={styles.otpFooterRow}>
+                <TouchableOpacity testID="otp-change-btn" onPress={changeNumber} disabled={busy}>
+                  <Text style={styles.otpLinkText}>Change number</Text>
+                </TouchableOpacity>
+                {resendTimer > 0 ? (
+                  <Text style={styles.otpHintMuted}>Resend in {resendTimer}s</Text>
+                ) : (
+                  <TouchableOpacity testID="otp-resend-btn" onPress={sendOtp} disabled={busy}>
+                    <Text style={styles.otpLinkText}>Resend OTP</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -1639,6 +1893,19 @@ const styles = StyleSheet.create({
   profileLogo: { width: 72, height: 72, backgroundColor: COLORS.primary, borderRadius: 18, alignItems: "center", justifyContent: "center", marginBottom: 16 },
   profileTitle: { fontSize: 26, fontWeight: "700", color: COLORS.text },
   profileSubtitle: { fontSize: 15, color: COLORS.textMuted, marginTop: 6, lineHeight: 22 },
+  // ===== OTP / Phone-verify styles =====
+  phoneInputRow: { flexDirection: "row", alignItems: "stretch", backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, overflow: "hidden", minHeight: 64 },
+  phonePrefix: { backgroundColor: "#EEF2FA", paddingHorizontal: 14, alignItems: "center", justifyContent: "center", borderRightWidth: 1, borderRightColor: COLORS.border },
+  phonePrefixText: { fontSize: 16, fontWeight: "700", color: COLORS.primary },
+  phoneInput: { flex: 1, paddingHorizontal: 14, fontSize: 18, color: COLORS.text, letterSpacing: 1 },
+  otpCodeInput: { fontSize: 28, letterSpacing: 12, textAlign: "center", fontWeight: "700" },
+  otpHint: { fontSize: 12, color: COLORS.textMuted, marginTop: 16, textAlign: "center", lineHeight: 18 },
+  otpFooterRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 24, paddingHorizontal: 4 },
+  otpLinkText: { color: COLORS.primary, fontSize: 14, fontWeight: "700" },
+  otpHintMuted: { color: COLORS.textMuted, fontSize: 14, fontWeight: "600" },
+  lockedPhoneRow: { flexDirection: "row", alignItems: "center", backgroundColor: "#F0F8F2", borderWidth: 1, borderColor: COLORS.success, borderRadius: 10, paddingHorizontal: 14, minHeight: 64 },
+  lockedPhonePrefix: { fontSize: 16, fontWeight: "700", color: COLORS.success, marginRight: 10 },
+  lockedPhoneText: { fontSize: 18, fontWeight: "700", color: COLORS.text, letterSpacing: 1 },
   formWrap: { padding: 16, paddingBottom: 40 },
   fieldWrap: { marginBottom: 14 },
   label: { fontSize: 13, fontWeight: "600", color: COLORS.textMuted, marginBottom: 8 },
