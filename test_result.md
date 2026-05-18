@@ -102,6 +102,74 @@
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
 
+user_problem_statement: |
+  Add Firebase Phone Authentication (OTP) before profile setup in the LoadLink app.
+  - User enters 10-digit Indian mobile number with +91 prefix → receives SMS OTP → enters 6-digit code.
+  - If profile + phoneVerified flag exist in AsyncStorage, skip straight to the app.
+  - Verified phone auto-fills the phone field in profile setup (read-only).
+  - Backend POST /api/auth/verify-token uses firebase-admin to verify the ID token and return the verified phone.
+
+backend:
+  - task: "POST /api/auth/verify-token (Firebase ID-token verification)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Added firebase-admin init from FIREBASE_SERVICE_ACCOUNT_B64 env var or local firebase-service-account.json. Endpoint verifies ID token via firebase_admin.auth.verify_id_token, strips +91 from phone_number, returns {uid, phone_number, phone_local, verified_at}."
+      - working: true
+        agent: "testing"
+        comment: "All 4 negative-path tests passed (empty body 422, empty id_token 400, garbage 401, fake JWT 401). Existing endpoints (GET /api/, /api/pincode/400703) still working. Firebase Admin initialized successfully in startup logs."
+
+frontend:
+  - task: "PhoneVerification screen (OTP send + confirm) using @react-native-firebase/auth"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/index.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added PhoneVerification component with two stages (phone entry → OTP). Uses signInWithPhoneNumber('+91' + phone), then confirmation.confirm(code), then user.getIdToken() → POST /api/auth/verify-token. Stores phoneVerified={phone, phoneFull, verifiedAt, uid} in AsyncStorage. Resend timer + change-number flow included. Web preview UI verified via screenshot. SMS OTP itself requires Android APK build (firebase native module) — cannot be tested in this environment."
+
+  - task: "Skip-to-app + auto-fill verified phone in ProfileSetup (read-only)"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/index.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Index() now reads both 'profile' and 'phoneVerified' from AsyncStorage. Both required to skip OTP. ProfileSetup accepts lockedPhone prop and shows the phone as a non-editable green-bordered row with the +91 prefix and a checkmark. Edit profile still works (only clears 'profile', keeps phoneVerified)."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.0"
+  test_sequence: 1
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "PhoneVerification screen (OTP send + confirm) using @react-native-firebase/auth"
+    - "Skip-to-app + auto-fill verified phone in ProfileSetup (read-only)"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "Implemented Firebase Phone Auth end-to-end. Backend endpoint POST /api/auth/verify-token added with firebase-admin, tested and passing. Frontend OTP screen renders first (verified via screenshot). Native SMS flow requires Android APK build — user said they build APK with Gradle locally, so this is expected. android/build.gradle + android/app/build.gradle patched with google-services classpath/plugin. firebase-admin added to both requirements.txt files. Service account JSON saved at /app/backend/firebase-service-account.json (gitignored)."
+  - agent: "testing"
+    message: "Backend verify-token endpoint tested and confirmed working with proper error handling (4 negative cases + 2 regression cases all passed). Firebase Admin initialized on startup."
+
 user_problem_statement: "Test the new Firebase phone authentication endpoint in the FastAPI backend"
 
 backend:
