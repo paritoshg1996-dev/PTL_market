@@ -90,7 +90,7 @@ android {
 
     namespace 'com.paritosh96.frontend'
     defaultConfig {
-        applicationId 'com.paritosh96.frontend'
+        applicationId 'com.ptlmarket.trucktraffic'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
