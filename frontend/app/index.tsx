@@ -1242,8 +1242,33 @@ const mapped: CitySuggestion[] = allLocations
   };
 
   const pick = async (s: CitySuggestion) => {
-    await saveRecentSearch(testIDPrefix, s);
-    onSelect(s.name, s.pincode, { city: s.city, locality: s.locality || s.name, state: s.state, valid: true });
+    // Always fetch the authoritative city/state from the pincode endpoint
+    // so the UI shows the instantly-recognizable district name (e.g., Rewari,
+    // Thane), even if the search result's parsed city/state was incomplete.
+    let finalCity = s.city;
+    let finalState = s.state;
+    let finalLocality = s.locality || s.name;
+    try {
+      const r = await fetch(`${API}/pincode/${s.pincode}`);
+      const j = await r.json();
+      if (j && j.valid) {
+        if (j.city) finalCity = j.city;
+        if (j.state) finalState = j.state;
+        // Preserve original locality if richer than backend's; else use city.
+        if (!finalLocality) finalLocality = j.city || s.name;
+      }
+    } catch {}
+    // Guard: if city ended up identical to state (e.g., "Haryana"/"Haryana"),
+    // fall back to the locality from the original search.
+    if (finalCity && finalState && finalCity.trim().toLowerCase() === finalState.trim().toLowerCase()) {
+      const fallback = (s.locality || s.name || "").split(",")[0].trim();
+      if (fallback && fallback.toLowerCase() !== finalState.trim().toLowerCase()) {
+        finalCity = fallback;
+      }
+    }
+    const enriched: CitySuggestion = { ...s, city: finalCity, state: finalState, locality: finalLocality };
+    await saveRecentSearch(testIDPrefix, enriched);
+    onSelect(enriched.name, enriched.pincode, { city: finalCity, locality: finalLocality, state: finalState, valid: true });
     onClose();
   };
 
@@ -1420,11 +1445,8 @@ function SmartRouteInput({ label, testIDPrefix, text, pin, info, onChange }: {
       >
         {hasValue ? (
           <>
-            <Text style={sriStyles.pinCity} numberOfLines={2}>
-              <Text style={sriStyles.pin}>{pin}</Text>
-              <Text style={sriStyles.comma}>, </Text>
-              <Text style={sriStyles.city}>{info.city || (info.locality || "").split(",")[0]}</Text>
-            </Text>
+            <Text style={sriStyles.pin} numberOfLines={1}>{pin}</Text>
+            <Text style={sriStyles.city} numberOfLines={1}>{info.city || (info.locality || "").split(",")[0]}</Text>
             <Text style={sriStyles.state} numberOfLines={1}>{info.state}</Text>
           </>
         ) : (
@@ -1464,14 +1486,12 @@ const sriStyles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 14,
-    minHeight: 88,
+    minHeight: 104,
     justifyContent: "center",
   },
   cardFilled: { borderColor: COLORS.primary, borderWidth: 1.5 },
-  pinCity: { marginBottom: 4, lineHeight: 22 },
-  pin: { fontSize: 16, fontWeight: "800", color: COLORS.text },
-  comma: { fontSize: 16, fontWeight: "700", color: COLORS.text },
-  city: { fontSize: 16, fontWeight: "800", color: COLORS.text },
+  pin: { fontSize: 17, fontWeight: "800", color: COLORS.text, marginBottom: 4, letterSpacing: 0.2 },
+  city: { fontSize: 15, fontWeight: "800", color: COLORS.text, marginBottom: 3 },
   state: { fontSize: 11, color: COLORS.textMuted, fontStyle: "italic", fontWeight: "500" },
   placeholder: { flexDirection: "row", alignItems: "center" },
   placeholderText: { fontSize: 14, color: COLORS.textSubtle },
