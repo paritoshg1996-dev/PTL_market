@@ -1445,9 +1445,18 @@ function SmartRouteInput({ label, testIDPrefix, text, pin, info, onChange }: {
       >
         {hasValue ? (
           <>
-            <Text style={sriStyles.pin} numberOfLines={1}>{pin}</Text>
-            <Text style={sriStyles.city} numberOfLines={1}>{info.city || (info.locality || "").split(",")[0]}</Text>
-            <Text style={sriStyles.state} numberOfLines={1}>{info.state}</Text>
+            <Text style={sriStyles.pin} numberOfLines={1}>{pin},</Text>
+            {(() => {
+              const loc = (info.locality || "").trim();
+              const cty = (info.city || "").trim();
+              const showLoc = loc && loc.toLowerCase() !== cty.toLowerCase();
+              return showLoc ? (
+                <Text style={sriStyles.locality} numberOfLines={1}>{loc}</Text>
+              ) : null;
+            })()}
+            <Text style={sriStyles.cityState} numberOfLines={1}>
+              {info.city}{info.city && info.state ? ", " : ""}{info.state}
+            </Text>
           </>
         ) : (
           <View style={sriStyles.placeholder}>
@@ -1491,6 +1500,8 @@ const sriStyles = StyleSheet.create({
   },
   cardFilled: { borderColor: COLORS.primary, borderWidth: 1.5 },
   pin: { fontSize: 17, fontWeight: "800", color: COLORS.text, marginBottom: 4, letterSpacing: 0.2 },
+  locality: { fontSize: 14, fontWeight: "700", color: COLORS.text, marginBottom: 3 },
+  cityState: { fontSize: 11, color: COLORS.textMuted, fontStyle: "italic", fontWeight: "500" },
   city: { fontSize: 15, fontWeight: "800", color: COLORS.text, marginBottom: 3 },
   state: { fontSize: 11, color: COLORS.textMuted, fontStyle: "italic", fontWeight: "500" },
   placeholder: { flexDirection: "row", alignItems: "center" },
