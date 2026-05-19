@@ -17,8 +17,9 @@ import {
   Modal,
   Image,
   Animated,
+  Dimensions,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Ionicons } from "@expo/vector-icons";
@@ -811,7 +812,7 @@ if (!w || w <= 0) return Alert.alert("Invalid", "Enter valid weight in tons");
       const reset = () => {
         setOriginText(""); setOriginPin(""); setOriginInfo(null);
         setDestText(""); setDestPin(""); setDestInfo(null);
-        setTruckType(""); setPlacement("Stackable"); setWeight(""); setImages([]);
+        setTruckType(""); setPlacement("Stackable"); setWeight(1.0); setImages([]);
       };
 
       if (alsoShare) {
@@ -821,26 +822,14 @@ if (!w || w <= 0) return Alert.alert("Invalid", "Enter valid weight in tons");
         const originLine = `📍 ${originPin}${oLocality ? `, ${oLocality}` : ""}${originInfo?.state ? `, ${originInfo.state}` : ""}`;
         const destLine   = `📍 ${destPin}${dLocality ? `, ${dLocality}` : ""}${destInfo?.state ? `, ${destInfo.state}` : ""}`;
         const loadLink = created?.id
-          ? `\n\n🔗 More details: https://www.trucktraffic.in?load=${created.id}`
-          : `\n\n🔗 https://www.trucktraffic.in`;
-        let imageLines = "";
-        if (images.length > 0 && created?.id) {
-          const longUrls = images.map((_, i) => `${API}/loads/${created.id}/image/${i}`);
-          const shortened = await Promise.all(longUrls.map(async (u) => {
-            try {
-              const r = await fetch(`${API}/shorten`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: u }) });
-              const j = await r.json(); return j.short || u;
-            } catch { return u; }
-          }));
-          imageLines = `\n📸 *Photos:*\n` + shortened.join("\n");
-        }
+          ? `\n\n🔗 More info & pics: https://www.trucktraffic.in?load=${created.id}`
+          : `\n\n🔗 More info & pics: https://www.trucktraffic.in`;
         const text = `🚛 *Truck Space Available – LoadLink*\n\n` +
-          `🗺️ *Route:*\n${originLine}\n   ⬇️\n${destLine}\n\n` +
+          `*Route:*\n${originLine}\n   ⬇️\n${destLine}\n\n` +
           `🚚 *Truck:* ${truckType}\n` +
           `⚖️ *Weight:* ${w} Tons\n` +
           `📅 *Loading:* ${dateStr}\n` +
           `🧱 *Placement:* ${placement}` +
-          `${imageLines}` +
           `\n\n📞 *Contact:* ${profile.name}` +
           (profile.company ? ` — ${profile.company}` : "") +
           `\n+91 ${profile.phone}` +
@@ -1431,8 +1420,11 @@ function SmartRouteInput({ label, testIDPrefix, text, pin, info, onChange }: {
       >
         {hasValue ? (
           <>
-            <Text style={sriStyles.pin}>{pin}</Text>
-            <Text style={sriStyles.city} numberOfLines={1}>{text || info.city.split(",")[0]}</Text>
+            <Text style={sriStyles.pinCity} numberOfLines={2}>
+              <Text style={sriStyles.pin}>{pin}</Text>
+              <Text style={sriStyles.comma}>, </Text>
+              <Text style={sriStyles.city}>{info.city || (info.locality || "").split(",")[0]}</Text>
+            </Text>
             <Text style={sriStyles.state} numberOfLines={1}>{info.state}</Text>
           </>
         ) : (
@@ -1476,9 +1468,11 @@ const sriStyles = StyleSheet.create({
     justifyContent: "center",
   },
   cardFilled: { borderColor: COLORS.primary, borderWidth: 1.5 },
-  pin: { fontSize: 18, fontWeight: "700", color: COLORS.text, marginBottom: 2 },
-  city: { fontSize: 15, fontWeight: "600", color: COLORS.text, marginBottom: 2 },
-  state: { fontSize: 13, color: COLORS.textMuted },
+  pinCity: { marginBottom: 4, lineHeight: 22 },
+  pin: { fontSize: 16, fontWeight: "800", color: COLORS.text },
+  comma: { fontSize: 16, fontWeight: "700", color: COLORS.text },
+  city: { fontSize: 16, fontWeight: "800", color: COLORS.text },
+  state: { fontSize: 11, color: COLORS.textMuted, fontStyle: "italic", fontWeight: "500" },
   placeholder: { flexDirection: "row", alignItems: "center" },
   placeholderText: { fontSize: 14, color: COLORS.textSubtle },
   clearBtn: { position: "absolute", top: 10, right: 10 },
@@ -1612,19 +1606,71 @@ function LoadMarketScreen({ profile }: { profile: Profile }) {
   );
 }
 
+// ============== ImageViewerModal (full-screen swipeable images) ==============
+function ImageViewerModal({ visible, images, initialIndex, onClose }: { visible: boolean; images: string[]; initialIndex: number; onClose: () => void }) {
+  const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
+  const flatRef = useRef<FlatList<string>>(null);
+  const [index, setIndex] = useState(initialIndex);
+
+  useEffect(() => {
+    if (visible) {
+      setIndex(initialIndex);
+      // ensure list scrolls to the tapped image after layout
+      setTimeout(() => flatRef.current?.scrollToOffset({ offset: initialIndex * SCREEN_W, animated: false }), 50);
+    }
+  }, [visible, initialIndex, SCREEN_W]);
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={ivStyles.backdrop} testID="image-viewer-modal">
+        <TouchableOpacity testID="image-viewer-close" onPress={onClose} style={ivStyles.closeBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+          <Ionicons name="close" size={28} color="#fff" />
+        </TouchableOpacity>
+        {images.length > 1 ? (
+          <View style={ivStyles.counter}>
+            <Text style={ivStyles.counterText}>{index + 1} / {images.length}</Text>
+          </View>
+        ) : null}
+        <FlatList
+          ref={flatRef}
+          data={images}
+          keyExtractor={(_, i) => `iv-${i}`}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          initialScrollIndex={initialIndex}
+          getItemLayout={(_, i) => ({ length: SCREEN_W, offset: SCREEN_W * i, index: i })}
+          onMomentumScrollEnd={(e) => {
+            const x = e.nativeEvent.contentOffset.x;
+            setIndex(Math.round(x / SCREEN_W));
+          }}
+          renderItem={({ item }) => (
+            <View style={{ width: SCREEN_W, height: SCREEN_H, alignItems: "center", justifyContent: "center" }}>
+              <Image source={{ uri: item }} style={{ width: SCREEN_W, height: SCREEN_H * 0.85 }} resizeMode="contain" />
+            </View>
+          )}
+        />
+      </View>
+    </Modal>
+  );
+}
+
+const ivStyles = StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.96)" },
+  closeBtn: { position: "absolute", top: 48, right: 20, zIndex: 10, width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(255,255,255,0.12)", alignItems: "center", justifyContent: "center" },
+  counter: { position: "absolute", top: 56, alignSelf: "center", zIndex: 10, backgroundColor: "rgba(255,255,255,0.14)", paddingHorizontal: 14, paddingVertical: 6, borderRadius: 100 },
+  counterText: { color: "#fff", fontWeight: "700", fontSize: 13 },
+});
+
 function LoadCard({ load, isMine, distance }: { load: Load; isMine: boolean; distance?: { origin: number; dest: number; offRoute: boolean } }) {
-  const [showImages, setShowImages] = useState(false);
+  const [viewerStart, setViewerStart] = useState<number | null>(null);
   const callPoster = () => Linking.openURL(`tel:${load.poster_phone}`).catch(() => Alert.alert("Error", "Cannot open dialer"));
   const dateStr = useMemo(() => { try { return new Date(load.loading_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }); } catch { return load.loading_date; } }, [load.loading_date]);
 
-  // Format route location: "400703 · Turbhe · Maharashtra"
-  const formatLocation = (pincode: string, locality: string, state: string) => {
-    const parts = [pincode, locality, state].filter(Boolean);
-    return parts.join(" · ");
-  };
-
-  const oLabel = formatLocation(load.origin_pincode, load.origin_locality || load.origin_city, load.origin_state);
-  const dLabel = formatLocation(load.destination_pincode, load.destination_locality || load.destination_city, load.destination_state);
+  // Format route location: pincode, city (bold) + state (smaller emphasis)
+  // shows recognizable city instead of locality for instant recognition.
+  const oCity = load.origin_city || load.origin_locality || "";
+  const dCity = load.destination_city || load.destination_locality || "";
 
   // Fix: use API constant (not process.env) for image URLs
   const getImageUri = (i: number) => `${API}/loads/${load.id}/image/${i}`;
@@ -1633,18 +1679,39 @@ function LoadCard({ load, isMine, distance }: { load: Load; isMine: boolean; dis
   const hasInlineImages = load.images && load.images.length > 0;
   const hasRemoteImages = !hasInlineImages && imageCount > 0;
 
+  // Build array of image URIs for the viewer modal
+  const viewerImages: string[] = hasInlineImages
+    ? (load.images as string[])
+    : hasRemoteImages
+      ? Array.from({ length: imageCount }).map((_, i) => getImageUri(i))
+      : [];
+
   return (
     <View style={styles.card} testID={`load-card-${load.id}`}>
       {/* ── LINE 1: Route ── */}
       <View style={styles.cardRouteRow}>
         <View style={styles.flex1}>
           <View style={cardStyles.routeEndpoint}>
-            <Ionicons name="location" size={13} color={COLORS.secondary} style={{ marginTop: 2 }} />
-            <Text style={cardStyles.routeLabel} numberOfLines={1}>{oLabel}</Text>
+            <Ionicons name="location" size={13} color={COLORS.secondary} style={{ marginTop: 3 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={cardStyles.routePinCity} numberOfLines={1}>
+                <Text style={cardStyles.routePin}>{load.origin_pincode}</Text>
+                <Text style={cardStyles.routeComma}>, </Text>
+                <Text style={cardStyles.routeCity}>{oCity}</Text>
+              </Text>
+              {load.origin_state ? <Text style={cardStyles.routeState} numberOfLines={1}>{load.origin_state}</Text> : null}
+            </View>
           </View>
-          <View style={[cardStyles.routeEndpoint, { marginTop: 6 }]}>
-            <Ionicons name="flag" size={13} color={COLORS.primary} style={{ marginTop: 2 }} />
-            <Text style={cardStyles.routeLabel} numberOfLines={1}>{dLabel}</Text>
+          <View style={[cardStyles.routeEndpoint, { marginTop: 8 }]}>
+            <Ionicons name="flag" size={13} color={COLORS.primary} style={{ marginTop: 3 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={cardStyles.routePinCity} numberOfLines={1}>
+                <Text style={cardStyles.routePin}>{load.destination_pincode}</Text>
+                <Text style={cardStyles.routeComma}>, </Text>
+                <Text style={cardStyles.routeCity}>{dCity}</Text>
+              </Text>
+              {load.destination_state ? <Text style={cardStyles.routeState} numberOfLines={1}>{load.destination_state}</Text> : null}
+            </View>
           </View>
         </View>
       </View>
@@ -1691,25 +1758,25 @@ function LoadCard({ load, isMine, distance }: { load: Load; isMine: boolean; dis
       <View style={cardStyles.line3Row}>
         {/* Photos section */}
         <View style={cardStyles.photosSection}>
-          {hasInlineImages ? (
-            load.images!.slice(0, 3).map((src, i) => (
-              <Image key={i} source={{ uri: src }} style={cardStyles.thumb} resizeMode="cover" />
-            ))
-          ) : hasRemoteImages ? (
-            showImages ? (
-              Array.from({ length: Math.min(imageCount, 3) }).map((_, i) => (
-                <Image key={i} source={{ uri: getImageUri(i) }} style={cardStyles.thumb} resizeMode="cover" />
-              ))
-            ) : (
-              <TouchableOpacity
-                testID={`show-images-btn-${load.id}`}
-                onPress={() => setShowImages(true)}
-                style={cardStyles.showImagesBtn}
-              >
-                <Ionicons name="images-outline" size={15} color={COLORS.primary} />
-                <Text style={cardStyles.showImagesBtnText}>{imageCount} photo{imageCount !== 1 ? "s" : ""}</Text>
-              </TouchableOpacity>
-            )
+          {viewerImages.length > 0 ? (
+            <>
+              {viewerImages.slice(0, 3).map((src, i) => (
+                <TouchableOpacity
+                  key={i}
+                  testID={`thumb-${load.id}-${i}`}
+                  activeOpacity={0.8}
+                  onPress={() => setViewerStart(i)}
+                  style={cardStyles.thumbWrap}
+                >
+                  <Image source={{ uri: src }} style={cardStyles.thumb} resizeMode="cover" />
+                  {i === 2 && viewerImages.length > 3 ? (
+                    <View style={cardStyles.thumbMoreOverlay}>
+                      <Text style={cardStyles.thumbMoreText}>+{viewerImages.length - 3}</Text>
+                    </View>
+                  ) : null}
+                </TouchableOpacity>
+              ))}
+            </>
           ) : (
             <Text style={cardStyles.noPhotos}>No photos</Text>
           )}
@@ -1729,13 +1796,25 @@ function LoadCard({ load, isMine, distance }: { load: Load; isMine: boolean; dis
           </TouchableOpacity>
         )}
       </View>
+
+      <ImageViewerModal
+        visible={viewerStart !== null}
+        images={viewerImages}
+        initialIndex={viewerStart || 0}
+        onClose={() => setViewerStart(null)}
+      />
     </View>
   );
 }
 
 const cardStyles = StyleSheet.create({
-  routeEndpoint: { flexDirection: "row", alignItems: "flex-start", gap: 5 },
+  routeEndpoint: { flexDirection: "row", alignItems: "flex-start", gap: 6 },
   routeLabel: { flex: 1, fontSize: 13, fontWeight: "600", color: COLORS.text },
+  routePinCity: { fontSize: 14, lineHeight: 18, color: COLORS.text },
+  routePin: { fontSize: 14, fontWeight: "800", color: COLORS.text },
+  routeComma: { fontSize: 14, fontWeight: "700", color: COLORS.text },
+  routeCity: { fontSize: 14, fontWeight: "800", color: COLORS.text },
+  routeState: { fontSize: 10, color: COLORS.textMuted, fontStyle: "italic", marginTop: 1 },
   metaRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 4 },
   metaChip: { flexDirection: "row", alignItems: "center", gap: 3 },
   metaText: { fontSize: 12, color: COLORS.text, fontWeight: "600" },
@@ -1744,7 +1823,10 @@ const cardStyles = StyleSheet.create({
   placementMeta: { backgroundColor: "#FFF4EE", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 100 },
   line3Row: { flexDirection: "row", alignItems: "center", gap: 10 },
   photosSection: { flexDirection: "row", gap: 6, alignItems: "center" },
+  thumbWrap: { position: "relative", borderRadius: 8, overflow: "hidden" },
   thumb: { width: 52, height: 52, borderRadius: 8, backgroundColor: COLORS.bg },
+  thumbMoreOverlay: { position: "absolute", inset: 0, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center" },
+  thumbMoreText: { color: COLORS.surface, fontSize: 14, fontWeight: "800" },
   showImagesBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.bg },
   showImagesBtnText: { color: COLORS.primary, fontWeight: "700", fontSize: 12 },
   noPhotos: { fontSize: 11, color: COLORS.textSubtle, fontStyle: "italic" },
@@ -1765,6 +1847,7 @@ function Spec({ icon, label, value }: any) {
 function FindSpaceModal({ visible, initial, onClose, onApply }: {
   visible: boolean; initial: ActiveFilter | null; onClose: () => void; onApply: (f: ActiveFilter) => Promise<void>;
 }) {
+  const insets = useSafeAreaInsets();
   const [originText, setOriginText] = useState("");
   const [originPin, setOriginPin] = useState("");
   const [originInfo, setOriginInfo] = useState<RouteInfo>(null);
@@ -1802,55 +1885,64 @@ function FindSpaceModal({ visible, initial, onClose, onApply }: {
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalBackdrop}>
-        <View style={styles.modalSheet} testID="find-space-modal">
-          <View style={styles.modalHandle} />
-          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-            <Text style={styles.modalTitle}>Find Space</Text>
-            <Text style={styles.modalSubtitle}>Enter your cargo details to find matching trucks within 30 km of your route.</Text>
+      <View style={styles.modalBackdrop}>
+        <TouchableOpacity activeOpacity={1} style={{ flex: 1 }} onPress={onClose} />
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ width: "100%" }}>
+          <View
+            style={[
+              styles.modalSheet,
+              styles.modalSheetBottom,
+              { maxHeight: Dimensions.get("window").height * 0.9, paddingBottom: Math.max(insets.bottom, 12) + 8 },
+            ]}
+            testID="find-space-modal"
+          >
+            <View style={styles.modalHandle} />
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              <Text style={styles.modalTitle}>Find Space</Text>
+              <Text style={styles.modalSubtitle}>Enter your cargo details to find matching trucks within 30 km of your route.</Text>
 
-            <SectionTitle icon="navigate-outline" title="Route" />
-            <View style={styles.routeInputsRow}>
-              <SmartRouteInput
-                label="My Origin"
-                testIDPrefix="fs-origin"
-                text={originText}
-                pin={originPin}
-                info={originInfo}
-                onChange={(t, p, i) => { setOriginText(t); setOriginPin(p); setOriginInfo(i); setOriginErr(""); }}
-              />
-              <View style={styles.routeArrowMid}>
-                <Ionicons name="arrow-forward" size={20} color={COLORS.secondary} />
+              <SectionTitle icon="navigate-outline" title="Route" />
+              <View style={styles.routeInputsRow}>
+                <SmartRouteInput
+                  label="My Origin"
+                  testIDPrefix="fs-origin"
+                  text={originText}
+                  pin={originPin}
+                  info={originInfo}
+                  onChange={(t, p, i) => { setOriginText(t); setOriginPin(p); setOriginInfo(i); setOriginErr(""); }}
+                />
+                <View style={styles.routeArrowMid}>
+                  <Ionicons name="arrow-forward" size={20} color={COLORS.secondary} />
+                </View>
+                <SmartRouteInput
+                  label="My Destination"
+                  testIDPrefix="fs-dest"
+                  text={destText}
+                  pin={destPin}
+                  info={destInfo}
+                  onChange={(t, p, i) => { setDestText(t); setDestPin(p); setDestInfo(i); setDestErr(""); }}
+                />
               </View>
-              <SmartRouteInput
-                label="My Destination"
-                testIDPrefix="fs-dest"
-                text={destText}
-                pin={destPin}
-                info={destInfo}
-                onChange={(t, p, i) => { setDestText(t); setDestPin(p); setDestInfo(i); setDestErr(""); }}
-              />
-            </View>
-            {originErr ? <Text style={[styles.errorText, { marginTop: -8, marginBottom: 8 }]}>{originErr}</Text> : null}
-            {destErr ? <Text style={[styles.errorText, { marginTop: -8, marginBottom: 8 }]}>{destErr}</Text> : null}
+              {originErr ? <Text style={[styles.errorText, { marginTop: -8, marginBottom: 8 }]}>{originErr}</Text> : null}
+              {destErr ? <Text style={[styles.errorText, { marginTop: -8, marginBottom: 8 }]}>{destErr}</Text> : null}
 
-            <Field label="Cargo Weight (kg)">
-              <TextInput testID="fs-weight-input" style={styles.input} placeholder="e.g., 800" placeholderTextColor={COLORS.textSubtle} value={weightKg} onChangeText={setWeightKg} keyboardType="decimal-pad" />
-            </Field>
+              <Field label="Cargo Weight (kg)">
+                <TextInput testID="fs-weight-input" style={styles.input} placeholder="e.g., 800" placeholderTextColor={COLORS.textSubtle} value={weightKg} onChangeText={setWeightKg} keyboardType="decimal-pad" />
+              </Field>
 
-            <View style={styles.row}>
-              <TouchableOpacity testID="fs-cancel-btn" style={[styles.outlineBtn, styles.flex1]} onPress={onClose} disabled={busy}>
-                <Text style={styles.outlineBtnText}>Cancel</Text>
-              </TouchableOpacity>
-              <View style={{ width: 12 }} />
-              <TouchableOpacity testID="fs-apply-btn" style={[styles.primaryBtn, styles.flex1, { marginTop: 0 }]} onPress={submit} disabled={busy}>
-                {busy ? <ActivityIndicator color={COLORS.surface} /> : <Text style={styles.primaryBtnText}>Show Matching Trucks</Text>}
-              </TouchableOpacity>
-            </View>
-            <View style={{ height: 16 }} />
-          </ScrollView>
-        </View>
-      </KeyboardAvoidingView>
+              <View style={styles.row}>
+                <TouchableOpacity testID="fs-cancel-btn" style={[styles.outlineBtn, styles.flex1]} onPress={onClose} disabled={busy}>
+                  <Text style={styles.outlineBtnText}>Cancel</Text>
+                </TouchableOpacity>
+                <View style={{ width: 12 }} />
+                <TouchableOpacity testID="fs-apply-btn" style={[styles.primaryBtn, styles.flex1, { marginTop: 0 }]} onPress={submit} disabled={busy}>
+                  {busy ? <ActivityIndicator color={COLORS.surface} /> : <Text style={styles.primaryBtnText}>Show Matching Trucks</Text>}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }
@@ -2021,6 +2113,7 @@ const styles = StyleSheet.create({
   sectionHeading: { fontSize: 13, fontWeight: "700", color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 0.5, marginTop: 24, marginBottom: 12 },
   modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
   modalSheet: { backgroundColor: COLORS.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingTop: 12, maxHeight: "92%" },
+  modalSheetBottom: { width: "100%", alignSelf: "stretch", borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
   modalHandle: { width: 40, height: 4, backgroundColor: COLORS.border, borderRadius: 2, alignSelf: "center", marginBottom: 16 },
   modalTitle: { fontSize: 22, fontWeight: "700", color: COLORS.text, marginBottom: 6 },
   modalSubtitle: { fontSize: 13, color: COLORS.textMuted, marginBottom: 20, lineHeight: 18 },

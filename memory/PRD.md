@@ -24,11 +24,18 @@ Mobile app (Expo React Native) for Indian truck operators to monetize excess tru
 
 ## Data Model (`loads` collection)
 ```
-id, origin_pincode, origin_city, origin_state, destination_pincode,
-destination_city, destination_state, cargo_types[], cargo_placement,
+id, origin_pincode, origin_locality, origin_city, origin_state, destination_pincode,
+destination_locality, destination_city, destination_state, cargo_types[], cargo_placement,
 weight_tons, space_cuft, loading_date, poster_name, poster_phone,
 poster_company, created_at
 ```
 
 ## Design
 Theme: Light "Swiss/High-Contrast" — Navy primary `#0A2463`, safety orange accent `#FF6B35`, success green `#248232`, large 44pt+ tap targets, system font.
+
+## Recent Changes (Jan 2026)
+- Route inputs (Post Space & Find Space) now display: **pincode, city** in bold + state in smaller italicized emphasis. UI shows recognizable city instead of full locality name; exact locality stored in backend (`origin_locality`/`destination_locality` added to `LoadCreate`).
+- LoadCard route shows pincode + city bold, state smaller below.
+- WhatsApp share message: removed per-image links, removed map emoji on Route line, updated CTA to "🔗 More info & pics: trucktraffic.in?load=...".
+- Market screen image thumbnails are tap-to-expand: opens full-screen `ImageViewerModal` with horizontal paging swipe between photos.
+- Find Space modal firmly anchored to bottom of screen with safe-area-aware padding, tap-outside-to-dismiss area on top.

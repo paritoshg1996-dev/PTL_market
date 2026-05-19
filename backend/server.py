@@ -77,9 +77,11 @@ _init_firebase_admin()
 # ===== Models =====
 class LoadCreate(BaseModel):
     origin_pincode: str
+    origin_locality: Optional[str] = ""
     origin_city: Optional[str] = ""
     origin_state: Optional[str] = ""
     destination_pincode: str
+    destination_locality: Optional[str] = ""
     destination_city: Optional[str] = ""
     destination_state: Optional[str] = ""
     cargo_types: List[str] = []
